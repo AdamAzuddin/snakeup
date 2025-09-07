@@ -34,6 +34,7 @@
     growPending: 0,
     tickMs: 120,
     score: 0,
+    socket: null,
   };
 
   // -----------------------------
@@ -112,12 +113,36 @@
 
   function startGame() {
     if (isRunning) return;
-    console.log("Start button clicked");
     isRunning = true;
     startBtn.style.display = "none";
     resetBtn.style.display = "inline-block";
     document.addEventListener("keydown", handleKeydown);
     gameIntervalId = setInterval(gameTick, state.tickMs);
+
+    // start a websocket connection
+    const socket = new WebSocket("ws://localhost:42069/game/1");
+
+    socket.onopen = () => {
+      console.log("✅ Connected to WebSocket server at /game/1");
+      // You can send an initial message if needed
+      socket.send(JSON.stringify({ type: "join", room: 1 }));
+    };
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log("📩 Message from server:", data);
+      // Handle game updates here later
+    };
+
+    socket.onclose = () => {
+      console.log("❌ Disconnected from WebSocket server");
+    };
+
+    socket.onerror = (error) => {
+      console.error("⚠️ WebSocket error:", error);
+    };
+
+    state.socket = socket;
   }
 
   function stopGame() {
@@ -127,6 +152,14 @@
       gameIntervalId = null;
     }
     document.removeEventListener("keydown", handleKeydown);
+
+    // Close WebSocket connection
+    // -----------------------------
+    if (state.socket) {
+      console.log("🔌 Closing WebSocket connection...");
+      state.socket.close();
+      state.socket = null;
+    }
   }
 
   function gameTick() {

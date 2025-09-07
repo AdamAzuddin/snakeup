@@ -1,7 +1,5 @@
 Client
-3. talk with server send hello world req to server via websocket
 
 Server
-1. receive web socket req from client
 2. Decide on protocol format
 3. define protobuf object (in root dir)
