@@ -1,0 +1,13 @@
+SnakeUp Protocol specification
+
+simple example:
+
+{
+    // header
+    id:1,
+    type: move
+
+    // body
+    offset: 00 // binary format. 01 move to right, 10 to left, 11 up, 00 down.
+}
+

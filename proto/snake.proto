@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package snakeup;
+
+option go_package = "github.com/AdamAzuddin/snakeup/server/proto;proto";
+
+// Define the type of messages
+enum MessageType {
+  UNKNOWN = 0;
+  MOVE = 1;
+}
+
+// Define move directions as binary values
+enum MoveDirection {
+  DOWN = 0;
+  RIGHT = 1;
+  LEFT = 2;
+  UP = 3;
+}
+
+// Header message
+message Header {
+  uint32 id = 1;             
+  MessageType type = 2;      
+}
+
+// Body message for move
+message MoveBody {
+  MoveDirection offset = 1;  
+}
+
+// Main message wrapper
+message SnakeMessage {
+  Header header = 1;
+  oneof body {
+    MoveBody move = 2;
+  }
+}
