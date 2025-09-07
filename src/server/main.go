@@ -27,6 +27,8 @@ func gameHandler(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	log.Println("✅ Client connected to /game/1")
+	// todo: assign client to specific game based on the game id
+	// if game id doesnt exist, create one. if it does, check if this client can still enter it
 
 	// Start a ticker to send JSON every 50ms
 	ticker := time.NewTicker(50 * time.Millisecond)
