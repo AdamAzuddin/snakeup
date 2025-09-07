@@ -1,3 +1,8 @@
 Client
 
+
 Server
+1. in game manager, spawn a new go routine to run a new game loop
+2. everytime a client connect to a game with specific id, give that client a player id
+3. different player id, different snake color
+4. limit how many people can join a game (4 for now)
