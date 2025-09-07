@@ -1,4 +1,4 @@
-# Project Plan: Snake Royale (Multiplayer Web Game)
+# Project Plan: SnakeUp (Multiplayer Snake Battle Royal)
 BMAD Format – Background, Motivation, Aim, Details
 
 ---
