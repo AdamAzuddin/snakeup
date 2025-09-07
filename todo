@@ -1,5 +1,4 @@
 Client
-2. basic game loop
 3. talk with server send hello world req to server via websocket
 
 Server
