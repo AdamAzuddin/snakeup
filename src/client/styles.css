@@ -1,0 +1,51 @@
+/* Center the game container and style the canvas */
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: #f5f7fa;
+    color: #222;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+h1 {
+    text-align: center;
+    margin: 16px 0 8px;
+}
+
+#gameContainer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+#gameCanvas {
+    background: #1b5e20; /* green background */
+    border-radius: 6px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+}
+
+#controls {
+    display: flex;
+    gap: 8px;
+}
+
+button {
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #f1f5f9;
+}
+
+#score {
+    margin-left: 12px;
+    font-weight: 600;
+}
+

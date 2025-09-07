@@ -1,5 +1,4 @@
 Client
-1. vibe code basic snake gameplay
 2. basic game loop
 3. talk with server send hello world req to server via websocket
 
