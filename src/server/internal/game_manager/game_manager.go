@@ -11,21 +11,47 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const MAX_NO_PLAYERS_IN_A_ROOM = 4
 
 type GameManager struct {
 	games []game.Game
 }
 
+func (gm *GameManager) CreateNewGame(gameId string) (*game.Game){
+	// spawn a new go routine
+	newGame := game.Game{
+		Id: gameId,
+	}
+	gm.games = append(gm.games, newGame)
+	return &newGame
+}
 
-func (*GameManager) AddNewGame(){
+func (*GameManager) RunGame(game *game.Game){
 
 }
 
-func (*GameManager) GetNewOrExistingGame(){
-
+func (gm *GameManager) IsGameIdAlreadyExist(gameId string) bool {
+	for _, game := range gm.games {
+		if game.Id == gameId {
+			return true
+		}
+	}
+	return false
 }
 
-// Upgrade HTTP requests to WebSocket
+func (gm *GameManager) IsGameRoomAlreadyFull(id string) bool {
+	for _, game := range gm.games {
+		if len(game.Players) < MAX_NO_PLAYERS_IN_A_ROOM {
+			return true
+		}
+	}
+	return false
+}
+
+func (*GameManager) AddPlayerToExistingGame(gameId string, player game.Player) {
+	// choose a different color for the snake
+}
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true // allow all origins (for dev)
@@ -36,7 +62,6 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract game ID from URL
 	vars := mux.Vars(r)
 	gameId := vars["gameId"]
-
 	// Upgrade connection
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -45,12 +70,29 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	log.Printf("✅ Client connected to game ID: %s", gameId)
-	
-	// Now you can use gameId to manage the specific game
-	// todo: assign client to specific game based on the game id
-	// if game id doesnt exist, create one. if it does, check if this client can still enter it
+	log.Printf("A client connected to game ID: %s", gameId)
 
+	player := game.Player{
+		GameId: gameId,
+	}
+
+	// check if game id already exist
+	if gm.IsGameIdAlreadyExist(gameId) {
+		if gm.IsGameRoomAlreadyFull(gameId) {
+			{
+				// return error to client
+			}
+			gm.AddPlayerToExistingGame(gameId, player)
+		} else {
+			// spawn a new go routine for this specific game
+
+			//gameChan := make([]byte,1024)
+			go func() {
+				gm.RunGame(gm.CreateNewGame(gameId))
+			}()
+			gm.AddPlayerToExistingGame(gameId, player)
+		}
+	}
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 

@@ -1,32 +1,34 @@
 package game
 
 type GameState int
-const(
-	Init GameState=iota
+
+const (
+	Init GameState = iota
 	Running
 	End
 )
 
-type Player struct{
-	id uint8
-	color string
-	score int
+type Player struct {
+	Id     uint8
+	Color  string
+	Score  int
+	GameId string
 }
 
-type Game struct{
-	id uint16
-	players []Player
-	state GameState
+type Game struct {
+	Id      string
+	Players []Player
+	State   GameState
 }
 
-func (*Game) loop()(error){
+func (*Game) loop() error {
 	return nil
 }
 
-func (*Game) AddPlayer()(error){
+func (*Game) AddPlayer() error {
 	return nil
 }
 
-func (*Game) RemovePlayer()(error){
+func (*Game) RemovePlayer() error {
 	return nil
 }
