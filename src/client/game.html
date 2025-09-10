@@ -8,13 +8,14 @@
   </head>
   <body>
     <h1>Snake Up!</h1>
-    <div>
-      <input id="game-id" type="text" placeholder="Enter game id" />
+    <div id="gameContainer">
+      <canvas id="gameCanvas" width="600" height="400"></canvas>
       <div id="controls">
-        <button id="findBtn">Find Game</button>
+        <button id="startBtn">Start Game</button>
+        <button id="resetBtn" style="display: none">Start Over</button>
+        <div id="score">Score: <span id="scoreValue">0</span></div>
       </div>
     </div>
-    <script src="index.js">
-    </script>
+    <script src="game.js"></script>
   </body>
 </html>

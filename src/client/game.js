@@ -113,6 +113,11 @@
 
   function startGame() {
     if (isRunning) return;
+    const gameId = sessionStorage.getItem('gameId') || '1';
+    if (!gameId.trim()) {
+        alert("Please enter a game ID");
+        return;
+    }
     isRunning = true;
     startBtn.style.display = "none";
     resetBtn.style.display = "inline-block";
@@ -120,10 +125,10 @@
     gameIntervalId = setInterval(gameTick, state.tickMs);
 
     // start a websocket connection
-    const socket = new WebSocket("ws://localhost:42069/game/1");
+    const socket = new WebSocket(`ws://localhost:42069/game/${gameId}`);
 
     socket.onopen = () => {
-      console.log("✅ Connected to WebSocket server at /game/1");
+      console.log(`✅ Connected to WebSocket server at /game/${gameId}`);
       // You can send an initial message if needed
       socket.send(JSON.stringify({ type: "join", room: 1 }));
     };

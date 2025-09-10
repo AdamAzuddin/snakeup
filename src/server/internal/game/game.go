@@ -1,6 +1,5 @@
 package game
 
-
 type GameState int
 const(
 	Init GameState=iota
@@ -21,5 +20,13 @@ type Game struct{
 }
 
 func (*Game) loop()(error){
+	return nil
+}
+
+func (*Game) AddPlayer()(error){
+	return nil
+}
+
+func (*Game) RemovePlayer()(error){
 	return nil
 }
