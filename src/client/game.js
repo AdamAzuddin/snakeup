@@ -12,7 +12,7 @@
   const BOARD_COLS = Math.floor(canvas.width / GRID_SIZE);
   const BOARD_ROWS = Math.floor(canvas.height / GRID_SIZE);
 
-  const SNAKE_COLOR = "#1976d2"; // blue
+  const SNAKE_COLOR = "#1976d2"; // blue (fallback)
   const APPLE_COLOR = "#d32f2f"; // red
   const TEXT_COLOR = "#ffffff";
 
@@ -27,7 +27,7 @@
   let isRunning = false;
 
   const state = {
-    snake: [{ x: 5, y: 5 }],
+    snakes: {},
     direction: { x: 1, y: 0 },
     nextDirection: { x: 1, y: 0 },
     apple: spawnApple([{ x: 5, y: 5 }]), // pass initial snake
@@ -35,6 +35,7 @@
     tickMs: 120,
     score: 0,
     socket: null,
+    myPlayerId: null,
   };
 
   // -----------------------------
@@ -102,52 +103,25 @@
   // Game logic
   // -----------------------------
   function resetGame() {
-    state.snake = [{ x: 5, y: 5 }];
+    state.snakes = {};
     state.direction = { x: 1, y: 0 };
     state.nextDirection = { x: 1, y: 0 };
-    state.apple = spawnApple(state.snake);
+    state.apple = { x: 0, y: 0 };
     state.growPending = 0;
     state.score = 0;
+    // Don't reset snakeColor - keep it from server
     updateScoreUI();
+    clearBoard();
   }
 
   function startGame() {
     if (isRunning) return;
-    const gameId = sessionStorage.getItem('gameId') || '1';
-    if (!gameId.trim()) {
-        alert("Please enter a game ID");
-        return;
-    }
+
     isRunning = true;
     startBtn.style.display = "none";
     resetBtn.style.display = "inline-block";
     document.addEventListener("keydown", handleKeydown);
-    gameIntervalId = setInterval(gameTick, state.tickMs);
-
-    // start a websocket connection
-    const socket = new WebSocket(`ws://localhost:42069/game/${gameId}`);
-
-    socket.onopen = () => {
-      console.log(`✅ Connected to WebSocket server at /game/${gameId}`);
-      // You can send an initial message if needed
-      socket.send(JSON.stringify({ type: "join", room: 1 }));
-    };
-
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      console.log("📩 Message from server:", data);
-      // Handle game updates here later
-    };
-
-    socket.onclose = () => {
-      console.log("❌ Disconnected from WebSocket server");
-    };
-
-    socket.onerror = (error) => {
-      console.error("⚠️ WebSocket error:", error);
-    };
-
-    state.socket = socket;
+    //gameIntervalId = setInterval(gameTick, state.tickMs);
   }
 
   function stopGame() {
@@ -221,10 +195,12 @@
     ctx.fillRect(pos.x * GRID_SIZE, pos.y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
   }
 
-  function drawSnake() {
-    ctx.fillStyle = SNAKE_COLOR;
-    for (const segment of state.snake) {
-      drawCell(segment, SNAKE_COLOR);
+  function drawSnakes() {
+    for (const [id, snake] of Object.entries(state.snakes)) {
+      const color = snake.color || SNAKE_COLOR;
+      for (const segment of snake.body) {
+        drawCell(segment, color);
+      }
     }
   }
 
@@ -243,8 +219,8 @@
 
   function render() {
     clearBoard();
-    drawApple();
-    drawSnake();
+    //drawApple();
+    drawSnakes();
   }
 
   function updateScoreUI() {
@@ -270,5 +246,48 @@
 
   // Initial render with start screen (not running)
   resetGame();
-  render();
+  clearBoard();
+
+  // connect with websocket
+  const gameId = sessionStorage.getItem("gameId") || "1";
+  if (!gameId.trim()) {
+    alert("Please enter a game ID");
+    return;
+  }
+
+  // start a websocket connection
+  const socket = new WebSocket(`ws://localhost:42069/game/${gameId}`);
+
+  socket.onopen = () => {
+    console.log(`✅ Connected to WebSocket server at /game/${gameId}`);
+    // You can send an initial message if needed
+    socket.send(JSON.stringify({ type: "join", room: 1 }));
+  };
+
+  socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    console.log("📩 Message from server:", data);
+
+    if (data.type === "players_update") {
+      state.snakes = {};
+      for (const p of data.players) {
+        state.snakes[p.playerId] = {
+          body: [{ x: p.x, y: p.y }], // start position
+          color: p.snakeColor,
+        };
+      }
+      console.log("🐍 Snakes state after update:", state.snakes);
+      render();
+    }
+  };
+
+  socket.onclose = () => {
+    console.log("❌ Disconnected from WebSocket server");
+  };
+
+  socket.onerror = (error) => {
+    console.error("⚠️ WebSocket error:", error);
+  };
+
+  state.socket = socket;
 })();

@@ -1,5 +1,9 @@
 package game
 
+import (
+	"github.com/AdamAzuddin/snakeup/server/internal/player"
+)
+
 type GameState int
 
 const (
@@ -8,18 +12,17 @@ const (
 	End
 )
 
-type Player struct {
-	Id     uint8
-	Color  string
-	Score  int
-	GameId string
-}
-
 type Game struct {
 	Id      string
-	Players []Player
+	Players []*player.Player
 	State   GameState
+	Updates chan GameState
+	Input  chan player.PlayerInput
+	Done    chan bool
+	Broadcast chan []byte
 }
+
+
 
 func (*Game) loop() error {
 	return nil

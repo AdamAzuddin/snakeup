@@ -2,31 +2,79 @@ package gamemanager
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/AdamAzuddin/snakeup/server/internal/game"
+	"github.com/AdamAzuddin/snakeup/server/internal/player"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
 const MAX_NO_PLAYERS_IN_A_ROOM = 4
 
-type GameManager struct {
-	games []game.Game
+var spawnPoints = []struct{ X, Y int }{
+	{5, 5},   // top-left
+	{35, 5},  // top-right
+	{5, 35},  // bottom-left
+	{35, 35}, // bottom-right
 }
 
-func (gm *GameManager) CreateNewGame(gameId string) (*game.Game){
+type GameManager struct {
+	games []*game.Game
+}
+
+func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 	// spawn a new go routine
 	newGame := game.Game{
-		Id: gameId,
+		Id:        gameId,
+		State:     game.Init,
+		Players:   make([]*player.Player, 0, MAX_NO_PLAYERS_IN_A_ROOM),
+		Updates:   make(chan game.GameState, 100),
+		Input:     make(chan player.PlayerInput, 100),
+		Done:      make(chan bool),
+		Broadcast: make(chan []byte, 100),
 	}
-	gm.games = append(gm.games, newGame)
+	gm.games = append(gm.games, &newGame)
+
+	go gm.runBroadcaster(&newGame)
 	return &newGame
 }
 
-func (*GameManager) RunGame(game *game.Game){
+func (gm *GameManager) RunGame(g *game.Game, p *player.Player) {
+	fmt.Printf("Running game loop for game id: %s", g.Id)
+
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	defer close(g.Updates)
+
+	for {
+		select {
+		case <-g.Done:
+			log.Printf("Game %s stopped\n", g.Id)
+			return
+		case input := <-g.Input:
+			log.Printf("Game %s received input from player %s: %v\n", g.Id, input.PlayerId, input.Movement)
+			gm.processPlayerInput(g, &input)
+
+		case <-ticker.C:
+			gm.UpdateGameState(g)
+			select {
+			case g.Updates <- g.State:
+			default:
+			}
+		}
+
+	}
+}
+
+func (gm *GameManager) processPlayerInput(g *game.Game, input *player.PlayerInput) {
+
+}
+
+func (gm *GameManager) UpdateGameState(g *game.Game) {
 
 }
 
@@ -39,17 +87,79 @@ func (gm *GameManager) IsGameIdAlreadyExist(gameId string) bool {
 	return false
 }
 
-func (gm *GameManager) IsGameRoomAlreadyFull(id string) bool {
-	for _, game := range gm.games {
-		if len(game.Players) < MAX_NO_PLAYERS_IN_A_ROOM {
-			return true
-		}
+func (gm *GameManager) IsGameRoomAlreadyFull(gameId string) bool {
+	g := gm.GetGameWithId(gameId)
+	if g == nil {
+		return false
 	}
-	return false
+	return len(g.Players) >= MAX_NO_PLAYERS_IN_A_ROOM
 }
 
-func (*GameManager) AddPlayerToExistingGame(gameId string, player game.Player) {
-	// choose a different color for the snake
+func (gm *GameManager) runBroadcaster(g *game.Game) {
+	for {
+		select {
+		case msg := <-g.Broadcast:
+			for _, p := range g.Players {
+				if p.Send != nil {
+					select {
+					case p.Send <- msg: // enqueue to player's writer goroutine
+					default:
+						log.Printf("⚠️ Player %d send buffer full, dropping message", p.Id)
+					}
+				}
+			}
+		case <-g.Done:
+			log.Printf("Stopping broadcaster for game %s", g.Id)
+			return
+		}
+	}
+}
+
+func (*GameManager) AddPlayerToExistingGame(g *game.Game, p *player.Player) {
+	colors := player.GetAllColors()
+	p.SnakeColor = colors[len(g.Players)]
+	p.Id = uint8(len(g.Players) + 1)
+
+	if int(p.Id) <= len(spawnPoints) {
+		p.X = spawnPoints[p.Id-1].X
+		p.Y = spawnPoints[p.Id-1].Y
+	} else {
+		// fallback if more players somehow
+		p.X, p.Y = 20, 20
+	}
+
+	g.Players = append(g.Players, p)
+
+	// Build a "players_update" message with the full list
+	var playersData []map[string]interface{}
+	for _, pl := range g.Players {
+		playersData = append(playersData, map[string]interface{}{
+			"playerId":   pl.Id,
+			"snakeColor": pl.SnakeColor.String(),
+			"x":          pl.X,
+			"y":          pl.Y,
+		})
+	}
+
+	msg := map[string]interface{}{
+		"type":    "players_update",
+		"gameId":  g.Id,
+		"players": playersData,
+	}
+
+	data, _ := json.Marshal(msg)
+
+	// Send the full roster to everyone
+	g.Broadcast <- data
+}
+
+func (gm *GameManager) GetGameWithId(gameId string) *game.Game {
+	for _, g := range gm.games {
+		if g.Id == gameId {
+			return g
+		}
+	}
+	return nil
 }
 
 var upgrader = websocket.Upgrader{
@@ -68,45 +178,79 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("Upgrade error:", err)
 		return
 	}
-	defer conn.Close()
 
-	log.Printf("A client connected to game ID: %s", gameId)
-
-	player := game.Player{
+	p := &player.Player{
 		GameId: gameId,
+		Conn:   conn,
+		Send:   make(chan []byte, 50),
 	}
+
+	go func(pl *player.Player) {
+		for msg := range pl.Send {
+			if err := pl.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				log.Printf("❌ Failed to write to player %d: %v", p.Id, err)
+				return
+			}
+		}
+	}(p)
+
+	defer p.Conn.Close()
+
+	var currentGame *game.Game
 
 	// check if game id already exist
-	if gm.IsGameIdAlreadyExist(gameId) {
-		if gm.IsGameRoomAlreadyFull(gameId) {
-			{
-				// return error to client
-			}
-			gm.AddPlayerToExistingGame(gameId, player)
+	if !gm.IsGameIdAlreadyExist(gameId) {
+		fmt.Printf("Adding new player to game id %v\n", gameId)
+		currentGame = gm.CreateNewGame(gameId)
+		gm.AddPlayerToExistingGame(currentGame, p)
+		//go gm.RunGame(currentGame, player)
+	} else {
+		currentGame = gm.GetGameWithId(gameId)
+		if !gm.IsGameRoomAlreadyFull(gameId) {
+			fmt.Printf("Adding player to an existing game with id %v\n", gameId)
+			gm.AddPlayerToExistingGame(currentGame, p)
 		} else {
-			// spawn a new go routine for this specific game
-
-			//gameChan := make([]byte,1024)
-			go func() {
-				gm.RunGame(gm.CreateNewGame(gameId))
-			}()
-			gm.AddPlayerToExistingGame(gameId, player)
+			conn.Close()
+			return
 		}
 	}
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
 
-	for t := range ticker.C {
-		msg := map[string]interface{}{
-			"type":   "tick",
-			"time":   t.UnixMilli(),
-			"gameId": gameId, // Include gameId in response
+	gm.handlePlayerConnection(p, currentGame)
+}
+
+func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
+	if g == nil {
+		log.Printf("❌ handlePlayerConnection called with nil game for player %d", p.Id)
+		return
+	}
+	defer p.Conn.Close()
+
+	for {
+		var msg map[string]interface{}
+		if err := p.Conn.ReadJSON(&msg); err != nil {
+			log.Printf("Player %d disconnected from game %s: %v", p.Id, g.Id, err)
+			// TODO: Remove player from game
+			close(p.Send)
+			break
 		}
-		data, _ := json.Marshal(msg)
 
-		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			log.Printf("❌ Client disconnected from game %s: %v", gameId, err)
-			return
+		// Handle incoming messages from this player
+		if msgType, ok := msg["type"].(string); ok {
+			switch msgType {
+			case "move":
+				// Convert to PlayerInput and send to game loop
+				if movement, ok := msg["direction"].(string); ok {
+					input := player.PlayerInput{
+						PlayerId: string(p.Id),
+						Movement: movement,
+					}
+					select {
+					case g.Input <- input:
+					default:
+						log.Printf("Game input channel full for player %d", p.Id)
+					}
+				}
+			}
 		}
 	}
 }
