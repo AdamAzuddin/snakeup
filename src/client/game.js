@@ -276,6 +276,9 @@
           color: p.snakeColor,
         };
       }
+      if (length(state.snakes) > 1) {
+        window.location.reload();
+      }
       console.log("🐍 Snakes state after update:", state.snakes);
       render();
     }
