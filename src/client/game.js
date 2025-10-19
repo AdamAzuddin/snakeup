@@ -297,6 +297,9 @@
     if (data.type == "game_starting"){
       startGameForEveryone();
     }
+    if (data.type == "tick"){
+      console.log(`🕒 Tick from room ${data.gameId}: #${data.tickCount}`);
+    }
   };
 
   socket.onclose = () => {

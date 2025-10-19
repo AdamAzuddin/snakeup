@@ -17,9 +17,9 @@ const MAX_NO_PLAYERS_IN_A_ROOM = 4
 
 var spawnPoints = []struct{ X, Y int }{
 	{5, 5},   // top-left
-	{35, 5},  // top-right
+	{25, 5},  // top-right
 	{5, 35},  // bottom-left
-	{35, 35}, // bottom-right
+	{25, 25}, // bottom-right
 }
 
 type GameManager struct {
@@ -47,8 +47,8 @@ func (gm *GameManager) RunGame(g *game.Game) {
 	fmt.Printf("Running game loop for game id: %s", g.Id)
 	// send game starting message to all the clients
 	msg := map[string]interface{}{
-		"type":    "game_starting",
-		"gameId":  g.Id,
+		"type":   "game_starting",
+		"gameId": g.Id,
 	}
 
 	data, _ := json.Marshal(msg)
@@ -60,7 +60,9 @@ func (gm *GameManager) RunGame(g *game.Game) {
 	defer ticker.Stop()
 	defer close(g.Updates)
 
+	tickCount := 0
 	for {
+		tickCount++
 		select {
 		case <-g.Done:
 			log.Printf("Game %s stopped\n", g.Id)
@@ -71,6 +73,14 @@ func (gm *GameManager) RunGame(g *game.Game) {
 
 		case <-ticker.C:
 			gm.UpdateGameState(g)
+			tickMsg := map[string]interface{}{
+				"type": "tick",
+				"gameId": g.Id,
+				"tickCount": tickCount,
+			}
+
+			data,_ := json.Marshal(tickMsg)
+			g.Broadcast <- data
 			select {
 			case g.Updates <- g.State:
 			default:
