@@ -269,16 +269,19 @@
     console.log("📩 Message from server:", data);
 
     if (data.type === "players_update") {
-      state.snakes = {};
+      function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+      }
+
       for (const p of data.players) {
+        const x = clamp(p.x, 0, BOARD_COLS - 1);
+        const y = clamp(p.y, 0, BOARD_ROWS - 1);
         state.snakes[p.playerId] = {
-          body: [{ x: p.x, y: p.y }], // start position
+          body: [{ x, y }],
           color: p.snakeColor,
         };
       }
-      if (length(state.snakes) > 1) {
-        window.location.reload();
-      }
+
       console.log("🐍 Snakes state after update:", state.snakes);
       render();
     }
