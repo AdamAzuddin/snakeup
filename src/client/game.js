@@ -121,7 +121,16 @@
     startBtn.style.display = "none";
     resetBtn.style.display = "inline-block";
     document.addEventListener("keydown", handleKeydown);
-    //gameIntervalId = setInterval(gameTick, state.tickMs);
+    socket.send(JSON.stringify({ type: "start", room: gameId }))
+  }
+
+  function startGameForEveryone() {
+    if (isRunning) return;
+
+    isRunning = true;
+    startBtn.style.display = "none";
+    resetBtn.style.display = "inline-block";
+    document.addEventListener("keydown", handleKeydown);
   }
 
   function stopGame() {
@@ -231,7 +240,6 @@
   // Button hooks
   // -----------------------------
   startBtn.addEventListener("click", () => {
-    resetGame();
     render();
     startGame();
   });
@@ -261,7 +269,7 @@
   socket.onopen = () => {
     console.log(`✅ Connected to WebSocket server at /game/${gameId}`);
     // You can send an initial message if needed
-    socket.send(JSON.stringify({ type: "join", room: 1 }));
+    socket.send(JSON.stringify({ type: "join", room: gameId }));
   };
 
   socket.onmessage = (event) => {
@@ -284,6 +292,10 @@
 
       console.log("🐍 Snakes state after update:", state.snakes);
       render();
+    }
+
+    if (data.type == "game_starting"){
+      startGameForEveryone();
     }
   };
 

@@ -43,8 +43,18 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 	return &newGame
 }
 
-func (gm *GameManager) RunGame(g *game.Game, p *player.Player) {
+func (gm *GameManager) RunGame(g *game.Game) {
 	fmt.Printf("Running game loop for game id: %s", g.Id)
+	// send game starting message to all the clients
+	msg := map[string]interface{}{
+		"type":    "game_starting",
+		"gameId":  g.Id,
+	}
+
+	data, _ := json.Marshal(msg)
+
+	// Send the full roster to everyone
+	g.Broadcast <- data
 
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
@@ -203,7 +213,6 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Adding new player to game id %v\n", gameId)
 		currentGame = gm.CreateNewGame(gameId)
 		gm.AddPlayerToExistingGame(currentGame, p)
-		//go gm.RunGame(currentGame, player)
 	} else {
 		currentGame = gm.GetGameWithId(gameId)
 		if !gm.IsGameRoomAlreadyFull(gameId) {
@@ -250,6 +259,10 @@ func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
 						log.Printf("Game input channel full for player %d", p.Id)
 					}
 				}
+			case "start":
+				room := msg["room"]
+				log.Printf("Player %d started the game in room %v (gameId: %s)", p.Id, room, g.Id)
+				gm.RunGame(g)
 			}
 		}
 	}
