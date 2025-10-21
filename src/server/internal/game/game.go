@@ -33,11 +33,11 @@ var spawnPoints = []struct{ X, Y int }{
 	{25, 25}, // bottom-right
 }
 
-var startingOffsets = []struct{xOffset, yOffset int}{
-	{0,1},
-	{0,-1},
-	{1,0},
-	{-1,0},
+var startingOffsets = []struct{ xOffset, yOffset int }{
+	{0, 1},
+	{0, -1},
+	{1, 0},
+	{-1, 0},
 }
 
 var colorMux sync.Mutex
@@ -95,18 +95,18 @@ func (g *Game) AddPlayer(p *player.Player) {
 func (g *Game) UpdatePlayersPositions() []byte {
 	// update each player's position based on their starting offsets
 	for i := range g.Players {
-		g.Players[i].X += g.Players[i].StartingXOffset
-		g.Players[i].Y += g.Players[i].StartingYOffset
+		g.Players[i].X = (g.Players[i].X + g.Players[i].StartingXOffset + 26) % 26
+		g.Players[i].Y = (g.Players[i].Y + g.Players[i].StartingYOffset + 20) % 20
 	}
 
 	// build tick message with updated positions
 	playersData := make([]map[string]interface{}, len(g.Players))
 	for i, p := range g.Players {
 		playersData[i] = map[string]interface{}{
-			"playerId": p.Id,
+			"playerId":   p.Id,
 			"snakeColor": p.SnakeColor.String(),
-			"x":  p.X,
-			"y":  p.Y,
+			"x":          p.X,
+			"y":          p.Y,
 		}
 	}
 
