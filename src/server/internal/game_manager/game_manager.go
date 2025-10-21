@@ -48,7 +48,7 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 }
 
 func (gm *GameManager) RunGame(g *game.Game) {
-	fmt.Printf("Running game loop for game id: %s", g.Id)
+	fmt.Printf("Running game loop for game id: %s\n", g.Id)
 	g.State = game.Running
 	// send game starting message to all the clients
 	msg := map[string]interface{}{
@@ -69,9 +69,6 @@ func (gm *GameManager) RunGame(g *game.Game) {
 	for {
 		tickCount++
 		select {
-		case <-g.Done:
-			log.Printf("Game %s stopped\n", g.Id)
-			return
 		case input := <-g.Input:
 			log.Printf("Game %s received input from player %s: %v\n", g.Id, input.PlayerId, input.Movement)
 			gm.processPlayerInput(g, &input)
@@ -88,6 +85,19 @@ func (gm *GameManager) RunGame(g *game.Game) {
 			}
 			data, _ := json.Marshal(tickMsg)
 			g.Broadcast <- data
+
+			if g.ContainCollisions() {
+				fmt.Println("Collision detected")
+				tickMsg := map[string]interface{}{
+					"type":      "game_over",
+					"gameId":    g.Id,
+				}
+				data, _ := json.Marshal(tickMsg)
+				g.State = game.End
+				g.Broadcast <- data
+				close(g.Done)
+				return
+			}
 			select {
 			case g.Updates <- g.State:
 			default:

@@ -121,9 +121,9 @@
 
     isRunning = true;
     startBtn.style.display = "none";
-    resetBtn.style.display = "inline-block";
+    resetBtn.style.display = "none";
     document.addEventListener("keydown", handleKeydown);
-    socket.send(JSON.stringify({ type: "start", room: gameId }))
+    socket.send(JSON.stringify({ type: "start", room: gameId }));
   }
 
   function startGameForEveryone() {
@@ -131,7 +131,7 @@
 
     isRunning = true;
     startBtn.style.display = "none";
-    resetBtn.style.display = "inline-block";
+    resetBtn.style.display = "none";
     document.addEventListener("keydown", handleKeydown);
   }
 
@@ -142,7 +142,7 @@
       gameIntervalId = null;
     }
     document.removeEventListener("keydown", handleKeydown);
-
+    resetBtn.style.display = "inline-block";
     // Close WebSocket connection
     // -----------------------------
     if (state.socket) {
@@ -276,11 +276,13 @@
 
   socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
-    console.log("📩 Message from server:", data);
+    //console.log("📩 Message from server:", data);
 
-    if (data.type == "player_init"){
-      myPlayerId = data.playerId
-      console.log(`My id: ${myPlayerId}, Snake color: ${data.snakeColor}, Position: {${data.XPos}, ${data.YPos}}\n`)
+    if (data.type == "player_init") {
+      myPlayerId = data.playerId;
+      console.log(
+        `My id: ${myPlayerId}, Snake color: ${data.snakeColor}, Position: {${data.XPos}, ${data.YPos}}\n`
+      );
     }
     if (data.type === "players_update") {
       function clamp(v, min, max) {
@@ -300,11 +302,13 @@
       render();
     }
 
-    if (data.type == "game_starting"){
+    if (data.type == "game_starting") {
       startGameForEveryone();
     }
-    if (data.type == "tick"){
-      console.log(`🕒 Tick from room ${data.gameId}: #${data.tickCount}`);
+    if (data.type == "game_over") {
+      console.log("Ending game...");
+      //stopGame();
+      resetBtn.style.display = "inline-block";
     }
   };
 

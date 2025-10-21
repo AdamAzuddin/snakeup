@@ -92,6 +92,20 @@ func (g *Game) AddPlayer(p *player.Player) {
 	g.Broadcast <- data
 }
 
+func (g *Game) ContainCollisions() bool{
+	positions := make(map[string]bool)
+	for _, p := range g.Players{
+		// check if any set of x AND Y is the same for any of the snakes
+		key:= fmt.Sprintf("%v,%v", p.X, p.Y)
+
+		if(positions[key]){
+			return true
+		}
+		positions[key] = true
+	}
+	return false
+}
+
 func (g *Game) UpdatePlayersPositions() []byte {
 	// update each player's position based on their starting offsets
 	for i := range g.Players {
