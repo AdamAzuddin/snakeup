@@ -1,6 +1,10 @@
 package game
 
 import (
+	"encoding/json"
+	"fmt"
+	"sync"
+
 	"github.com/AdamAzuddin/snakeup/server/internal/player"
 )
 
@@ -13,23 +17,72 @@ const (
 )
 
 type Game struct {
-	Id      string
-	Players []*player.Player
-	State   GameState
-	Updates chan GameState
-	Input  chan player.PlayerInput
-	Done    chan bool
+	Id        string
+	Players   []*player.Player
+	State     GameState
+	Updates   chan GameState
+	Input     chan player.PlayerInput
+	Done      chan bool
 	Broadcast chan []byte
 }
 
-
-
-func (*Game) loop() error {
-	return nil
+var spawnPoints = []struct{ X, Y int }{
+	{5, 5},   // top-left
+	{25, 5},  // top-right
+	{5, 35},  // bottom-left
+	{25, 25}, // bottom-right
 }
 
-func (*Game) AddPlayer() error {
-	return nil
+var colorMux sync.Mutex
+var snakeColorCount int
+
+func getColor() player.SnakeColor {
+	colorMux.Lock()
+	defer colorMux.Unlock()
+
+	// Assign color based on count, cycling through the available ones
+	color := player.SnakeColor(snakeColorCount % 4)
+	snakeColorCount++
+	return color
+}
+
+func (g *Game) AddPlayer(p *player.Player) {
+	fmt.Printf("Adding player with id: %v \n", p.Id)
+	p.SnakeColor = player.SnakeColor(getColor())
+	fmt.Printf("Adding player with color id: %v\n", p.SnakeColor)
+	if len(g.Players) < len(spawnPoints) {
+		p.X = spawnPoints[p.SnakeColor].X
+		fmt.Printf("New snake x point: %v\n", p.X)
+		p.Y = spawnPoints[p.SnakeColor].Y
+		fmt.Printf("New snake x point: %v\n", p.Y)
+	} else {
+		// fallback if more players somehow
+		p.X, p.Y = 20, 20
+	}
+
+	g.Players = append(g.Players, p)
+
+	// Build a "players_update" message with the full list
+	var playersData []map[string]interface{}
+	for _, pl := range g.Players {
+		playersData = append(playersData, map[string]interface{}{
+			"playerId":   pl.Id,
+			"snakeColor": pl.SnakeColor.String(),
+			"x":          pl.X,
+			"y":          pl.Y,
+		})
+	}
+
+	msg := map[string]interface{}{
+		"type":    "players_update",
+		"gameId":  g.Id,
+		"players": playersData,
+	}
+
+	data, _ := json.Marshal(msg)
+
+	// Send the full roster to everyone
+	g.Broadcast <- data
 }
 
 func (*Game) RemovePlayer() error {

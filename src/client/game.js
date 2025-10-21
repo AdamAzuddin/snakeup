@@ -38,6 +38,8 @@
     myPlayerId: null,
   };
 
+  var myPlayerId;
+
   // -----------------------------
   // Utilities
   // -----------------------------
@@ -276,6 +278,10 @@
     const data = JSON.parse(event.data);
     console.log("📩 Message from server:", data);
 
+    if (data.type == "player_init"){
+      myPlayerId = data.playerId
+      console.log(`My id: ${myPlayerId}, Snake color: ${data.snakeColor}, Position: {${data.XPos}, ${data.YPos}}\n`)
+    }
     if (data.type === "players_update") {
       function clamp(v, min, max) {
         return Math.max(min, Math.min(max, v));

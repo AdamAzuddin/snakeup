@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/AdamAzuddin/snakeup/server/internal/game"
@@ -14,6 +15,16 @@ import (
 )
 
 const MAX_NO_PLAYERS_IN_A_ROOM = 4
+
+var idCounter int64
+var idMutex sync.Mutex
+
+func generatePlayerId() int64 {
+	idMutex.Lock()
+	defer idMutex.Unlock()
+	idCounter++
+	return idCounter
+}
 
 var spawnPoints = []struct{ X, Y int }{
 	{5, 5},   // top-left
@@ -45,6 +56,7 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 
 func (gm *GameManager) RunGame(g *game.Game) {
 	fmt.Printf("Running game loop for game id: %s", g.Id)
+	g.State = game.Running
 	// send game starting message to all the clients
 	msg := map[string]interface{}{
 		"type":   "game_starting",
@@ -74,12 +86,12 @@ func (gm *GameManager) RunGame(g *game.Game) {
 		case <-ticker.C:
 			gm.UpdateGameState(g)
 			tickMsg := map[string]interface{}{
-				"type": "tick",
-				"gameId": g.Id,
+				"type":      "tick",
+				"gameId":    g.Id,
 				"tickCount": tickCount,
 			}
 
-			data,_ := json.Marshal(tickMsg)
+			data, _ := json.Marshal(tickMsg)
 			g.Broadcast <- data
 			select {
 			case g.Updates <- g.State:
@@ -135,44 +147,6 @@ func (gm *GameManager) runBroadcaster(g *game.Game) {
 	}
 }
 
-func (*GameManager) AddPlayerToExistingGame(g *game.Game, p *player.Player) {
-	colors := player.GetAllColors()
-	p.SnakeColor = colors[len(g.Players)]
-	p.Id = uint8(len(g.Players) + 1)
-
-	if int(p.Id) <= len(spawnPoints) {
-		p.X = spawnPoints[p.Id-1].X
-		p.Y = spawnPoints[p.Id-1].Y
-	} else {
-		// fallback if more players somehow
-		p.X, p.Y = 20, 20
-	}
-
-	g.Players = append(g.Players, p)
-
-	// Build a "players_update" message with the full list
-	var playersData []map[string]interface{}
-	for _, pl := range g.Players {
-		playersData = append(playersData, map[string]interface{}{
-			"playerId":   pl.Id,
-			"snakeColor": pl.SnakeColor.String(),
-			"x":          pl.X,
-			"y":          pl.Y,
-		})
-	}
-
-	msg := map[string]interface{}{
-		"type":    "players_update",
-		"gameId":  g.Id,
-		"players": playersData,
-	}
-
-	data, _ := json.Marshal(msg)
-
-	// Send the full roster to everyone
-	g.Broadcast <- data
-}
-
 func (gm *GameManager) GetGameWithId(gameId string) *game.Game {
 	for _, g := range gm.games {
 		if g.Id == gameId {
@@ -200,6 +174,7 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p := &player.Player{
+		Id:     uint64(generatePlayerId()),
 		GameId: gameId,
 		Conn:   conn,
 		Send:   make(chan []byte, 50),
@@ -222,18 +197,28 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 	if !gm.IsGameIdAlreadyExist(gameId) {
 		fmt.Printf("Adding new player to game id %v\n", gameId)
 		currentGame = gm.CreateNewGame(gameId)
-		gm.AddPlayerToExistingGame(currentGame, p)
 	} else {
 		currentGame = gm.GetGameWithId(gameId)
 		if !gm.IsGameRoomAlreadyFull(gameId) {
 			fmt.Printf("Adding player to an existing game with id %v\n", gameId)
-			gm.AddPlayerToExistingGame(currentGame, p)
 		} else {
 			conn.Close()
 			return
 		}
 	}
+	currentGame.AddPlayer(p)
 
+	msg := map[string]interface{}{
+		"type":       "player_init",
+		"gameId":     p.GameId,
+		"playerId":   p.Id,
+		"snakeColor": p.SnakeColor,
+		"XPos":       p.X,
+		"YPos":       p.Y,
+	}
+
+	data, _ := json.Marshal(msg)
+	p.Send <- data
 	gm.handlePlayerConnection(p, currentGame)
 }
 
@@ -260,7 +245,7 @@ func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
 				// Convert to PlayerInput and send to game loop
 				if movement, ok := msg["direction"].(string); ok {
 					input := player.PlayerInput{
-						PlayerId: string(p.Id),
+						PlayerId: string(rune(p.Id)),
 						Movement: movement,
 					}
 					select {

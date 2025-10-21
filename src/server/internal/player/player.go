@@ -3,7 +3,7 @@ package player
 import "github.com/gorilla/websocket"
 
 type Player struct {
-	Id         uint8
+	Id         uint64
 	SnakeColor SnakeColor
 	Score      int
 	GameId     string
