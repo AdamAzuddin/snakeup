@@ -10,6 +10,7 @@ type Player struct {
 	Conn       *websocket.Conn
 	Send chan []byte
 	X, Y int
+	StartingXOffset, StartingYOffset int
 }
 
 type SnakeColor int

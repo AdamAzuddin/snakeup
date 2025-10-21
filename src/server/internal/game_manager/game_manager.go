@@ -26,13 +26,6 @@ func generatePlayerId() int64 {
 	return idCounter
 }
 
-var spawnPoints = []struct{ X, Y int }{
-	{5, 5},   // top-left
-	{25, 5},  // top-right
-	{5, 35},  // bottom-left
-	{25, 25}, // bottom-right
-}
-
 type GameManager struct {
 	games []*game.Game
 }
@@ -84,13 +77,15 @@ func (gm *GameManager) RunGame(g *game.Game) {
 			gm.processPlayerInput(g, &input)
 
 		case <-ticker.C:
-			gm.UpdateGameState(g)
+			if tickCount%10 == 0 {
+				playersUpdatedPositions := g.UpdatePlayersPositions()
+				g.Broadcast <- playersUpdatedPositions
+			}
 			tickMsg := map[string]interface{}{
 				"type":      "tick",
 				"gameId":    g.Id,
 				"tickCount": tickCount,
 			}
-
 			data, _ := json.Marshal(tickMsg)
 			g.Broadcast <- data
 			select {
@@ -103,10 +98,6 @@ func (gm *GameManager) RunGame(g *game.Game) {
 }
 
 func (gm *GameManager) processPlayerInput(g *game.Game, input *player.PlayerInput) {
-
-}
-
-func (gm *GameManager) UpdateGameState(g *game.Game) {
 
 }
 
