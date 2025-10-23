@@ -120,7 +120,7 @@
     resetBtn.style.display = "none";
     document.addEventListener("keydown", handleKeydown);
     socket.send(JSON.stringify({ type: "start", room: gameId }));
-    console.log("start message sent")
+    console.log("start message sent");
   }
 
   function startGameForEveryone() {
@@ -136,16 +136,37 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  function drawCell(pos, color) {
+  function drawCell(pos, color, isMySnake) {
+    const x = pos.x * GRID_SIZE;
+    const y = pos.y * GRID_SIZE;
+
+    // Draw the main snake body
     ctx.fillStyle = color;
-    ctx.fillRect(pos.x * GRID_SIZE, pos.y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+    ctx.fillRect(x, y, GRID_SIZE, GRID_SIZE);
+
+    if (isMySnake) {
+      // Draw a black border around your snake
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "black";
+      ctx.strokeRect(x, y, GRID_SIZE, GRID_SIZE);
+
+      // Optional: add a shadow glow effect
+      ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+    } else {
+      // Reset shadow for other snakes
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+    }
   }
 
   function drawSnakes() {
     for (const [id, snake] of Object.entries(state.snakes)) {
       const color = snake.color || SNAKE_COLOR;
       for (const segment of snake.body) {
-        drawCell(segment, color);
+        drawCell(segment, color, snake.mySnake);
       }
     }
   }
@@ -183,24 +204,25 @@
   });
 
   resetBtn.addEventListener("click", () => {
-  console.log("Reset button clicked");
+    console.log("Reset button clicked");
 
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "reset", room: gameId }));
-    console.log("✅ Reset message sent");
-  } else {
-    console.warn("⚠️ WebSocket not open, retrying in 500ms...");
-    setTimeout(() => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: "reset", room: gameId }));
-        console.log("✅ Reset message sent after retry");
-      } else {
-        console.error("❌ Failed to send reset message — socket still closed");
-      }
-    }, 500);
-  }
-});
-
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "reset", room: gameId }));
+      console.log("✅ Reset message sent");
+    } else {
+      console.warn("⚠️ WebSocket not open, retrying in 500ms...");
+      setTimeout(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "reset", room: gameId }));
+          console.log("✅ Reset message sent after retry");
+        } else {
+          console.error(
+            "❌ Failed to send reset message — socket still closed"
+          );
+        }
+      }, 500);
+    }
+  });
 
   // Initial render with start screen (not running)
   resetGame();
@@ -240,9 +262,11 @@
       for (const p of data.players) {
         const x = clamp(p.x, 0, BOARD_COLS - 1);
         const y = clamp(p.y, 0, BOARD_ROWS - 1);
+        const isMySnake = myPlayerId == p.playerId;
         state.snakes[p.playerId] = {
           body: [{ x, y }],
           color: p.snakeColor,
+          mySnake: isMySnake,
         };
       }
 
@@ -255,15 +279,17 @@
       startBtn.style.display = "inline-block";
       resetBtn.style.display = "none";
       function clamp(v, min, max) {
-        return Math.max(min, Math.min(max, v))    ;
+        return Math.max(min, Math.min(max, v));
       }
 
       for (const p of data.players) {
         const x = clamp(p.x, 0, BOARD_COLS - 1);
         const y = clamp(p.y, 0, BOARD_ROWS - 1);
+        const isMySnake = myPlayerId == p.playerId;
         state.snakes[p.playerId] = {
           body: [{ x, y }],
           color: p.snakeColor,
+          mySnake: isMySnake,
         };
       }
 
@@ -288,6 +314,4 @@
   socket.onerror = (error) => {
     console.error("⚠️ WebSocket error:", error);
   };
-
-  
 })();
