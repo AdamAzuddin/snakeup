@@ -17,13 +17,14 @@ const (
 )
 
 type Game struct {
-	Id        string
-	Players   []*player.Player
-	State     GameState
-	Updates   chan GameState
-	Input     chan player.PlayerInput
-	Done      chan bool
-	Broadcast chan []byte
+	Id            string
+	Players       []*player.Player
+	State         GameState
+	Updates       chan GameState
+	Input         chan player.PlayerInput
+	StopBroadcast chan bool
+	Broadcast     chan []byte
+	Quit		  chan struct{}
 }
 
 var spawnPoints = []struct{ X, Y int }{
@@ -53,6 +54,24 @@ func getColor() player.SnakeColor {
 	return color
 }
 
+func (g *Game) BroadcastPlayersData() {
+	var playersData []map[string]interface{}
+	for _, pl := range g.Players {
+		playersData = append(playersData, map[string]interface{}{
+			"playerId":   pl.Id,
+			"snakeColor": pl.SnakeColor.String(),
+			"x":          pl.X,
+			"y":          pl.Y})
+	}
+	msg := map[string]interface{}{
+		"type":    "players_update",
+		"gameId":  g.Id,
+		"players": playersData,
+	}
+	data, _ := json.Marshal(msg)
+	g.Broadcast <- data
+}
+
 func (g *Game) AddPlayer(p *player.Player) {
 	fmt.Printf("Adding player with id: %v \n", p.Id)
 	p.SnakeColor = player.SnakeColor(getColor())
@@ -70,35 +89,16 @@ func (g *Game) AddPlayer(p *player.Player) {
 	g.Players = append(g.Players, p)
 
 	// Build a "players_update" message with the full list
-	var playersData []map[string]interface{}
-	for _, pl := range g.Players {
-		playersData = append(playersData, map[string]interface{}{
-			"playerId":   pl.Id,
-			"snakeColor": pl.SnakeColor.String(),
-			"x":          pl.X,
-			"y":          pl.Y,
-		})
-	}
-
-	msg := map[string]interface{}{
-		"type":    "players_update",
-		"gameId":  g.Id,
-		"players": playersData,
-	}
-
-	data, _ := json.Marshal(msg)
-
-	// Send the full roster to everyone
-	g.Broadcast <- data
+	g.BroadcastPlayersData()
 }
 
-func (g *Game) ContainCollisions() bool{
+func (g *Game) ContainCollisions() bool {
 	positions := make(map[string]bool)
-	for _, p := range g.Players{
+	for _, p := range g.Players {
 		// check if any set of x AND Y is the same for any of the snakes
-		key:= fmt.Sprintf("%v,%v", p.X, p.Y)
+		key := fmt.Sprintf("%v,%v", p.X, p.Y)
 
-		if(positions[key]){
+		if positions[key] {
 			return true
 		}
 		positions[key] = true
@@ -106,7 +106,7 @@ func (g *Game) ContainCollisions() bool{
 	return false
 }
 
-func (g *Game) UpdatePlayersPositions() []byte {
+func (g *Game) UpdatePlayersPositions() {
 	// update each player's position based on their starting offsets
 	for i := range g.Players {
 		g.Players[i].X = (g.Players[i].X + g.Players[i].StartingXOffset + 26) % 26
@@ -114,24 +114,31 @@ func (g *Game) UpdatePlayersPositions() []byte {
 	}
 
 	// build tick message with updated positions
-	playersData := make([]map[string]interface{}, len(g.Players))
-	for i, p := range g.Players {
-		playersData[i] = map[string]interface{}{
-			"playerId":   p.Id,
-			"snakeColor": p.SnakeColor.String(),
-			"x":          p.X,
-			"y":          p.Y,
-		}
-	}
+	g.BroadcastPlayersData()
+}
 
-	tickMsg := map[string]interface{}{
-		"type":    "players_update",
+func (g *Game) ResetGame() {
+	g.State = Init
+	for _, p := range g.Players {
+		p.X = spawnPoints[p.SnakeColor].X
+		p.Y = spawnPoints[p.SnakeColor].Y
+	}
+	var playersData []map[string]interface{}
+	for _, pl := range g.Players {
+		playersData = append(playersData, map[string]interface{}{
+			"playerId":   pl.Id,
+			"snakeColor": pl.SnakeColor.String(),
+			"x":          pl.X,
+			"y":          pl.Y})
+	}
+	msg := map[string]interface{}{
+		"type":    "reset_game",
 		"gameId":  g.Id,
 		"players": playersData,
 	}
-
-	data, _ := json.Marshal(tickMsg)
-	return data
+	data, _ := json.Marshal(msg)
+	g.Broadcast <- data
+	fmt.Printf("Reset message sent")
 }
 
 func (*Game) RemovePlayer() error {

@@ -33,13 +33,14 @@ type GameManager struct {
 func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 	// spawn a new go routine
 	newGame := game.Game{
-		Id:        gameId,
-		State:     game.Init,
-		Players:   make([]*player.Player, 0, MAX_NO_PLAYERS_IN_A_ROOM),
-		Updates:   make(chan game.GameState, 100),
-		Input:     make(chan player.PlayerInput, 100),
-		Done:      make(chan bool),
-		Broadcast: make(chan []byte, 100),
+		Id:            gameId,
+		State:         game.Init,
+		Players:       make([]*player.Player, 0, MAX_NO_PLAYERS_IN_A_ROOM),
+		Updates:       make(chan game.GameState, 100),
+		Input:         make(chan player.PlayerInput, 100),
+		StopBroadcast: make(chan bool),
+		Broadcast:     make(chan []byte, 100),
+		Quit:          make(chan struct{}),
 	}
 	gm.games = append(gm.games, &newGame)
 
@@ -61,9 +62,8 @@ func (gm *GameManager) RunGame(g *game.Game) {
 	// Send the full roster to everyone
 	g.Broadcast <- data
 
-	ticker := time.NewTicker(50 * time.Millisecond)
+	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
-	defer close(g.Updates)
 
 	tickCount := 0
 	for {
@@ -72,11 +72,14 @@ func (gm *GameManager) RunGame(g *game.Game) {
 		case input := <-g.Input:
 			log.Printf("Game %s received input from player %s: %v\n", g.Id, input.PlayerId, input.Movement)
 			gm.processPlayerInput(g, &input)
-
+			
 		case <-ticker.C:
+			if g.State != game.Running {
+				continue
+			}
+
 			if tickCount%10 == 0 {
-				playersUpdatedPositions := g.UpdatePlayersPositions()
-				g.Broadcast <- playersUpdatedPositions
+				g.UpdatePlayersPositions()
 			}
 			tickMsg := map[string]interface{}{
 				"type":      "tick",
@@ -89,18 +92,22 @@ func (gm *GameManager) RunGame(g *game.Game) {
 			if g.ContainCollisions() {
 				fmt.Println("Collision detected")
 				tickMsg := map[string]interface{}{
-					"type":      "game_over",
-					"gameId":    g.Id,
+					"type":   "game_over",
+					"gameId": g.Id,
 				}
 				data, _ := json.Marshal(tickMsg)
 				g.State = game.End
 				g.Broadcast <- data
-				close(g.Done)
-				return
+				g.Updates <- game.End
 			}
-			select {
-			case g.Updates <- g.State:
-			default:
+		case state := <-g.Updates:
+			switch state {
+			case game.Init:
+				fmt.Println("🔄 Game reset detected, resuming loop")
+				g.State = game.Running
+			case game.End:
+				fmt.Println("🛑 Game ended, waiting for reset")
+				return
 			}
 		}
 
@@ -141,7 +148,7 @@ func (gm *GameManager) runBroadcaster(g *game.Game) {
 					}
 				}
 			}
-		case <-g.Done:
+		case <-g.StopBroadcast:
 			log.Printf("Stopping broadcaster for game %s", g.Id)
 			return
 		}
@@ -258,7 +265,12 @@ func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
 			case "start":
 				room := msg["room"]
 				log.Printf("Player %d started the game in room %v (gameId: %s)", p.Id, room, g.Id)
-				gm.RunGame(g)
+				go gm.RunGame(g)
+			case "reset":
+				room := msg["room"]
+				log.Printf("Player %d reset the game in room %v (gameId: %s)", p.Id, room, g.Id)
+				
+				g.ResetGame()
 			}
 		}
 	}

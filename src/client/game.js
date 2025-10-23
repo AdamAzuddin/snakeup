@@ -24,7 +24,6 @@
   // Game State
   // -----------------------------
   let gameIntervalId = null;
-  let isRunning = false;
 
   const state = {
     snakes: {},
@@ -117,81 +116,17 @@
   }
 
   function startGame() {
-    if (isRunning) return;
-
-    isRunning = true;
     startBtn.style.display = "none";
     resetBtn.style.display = "none";
     document.addEventListener("keydown", handleKeydown);
     socket.send(JSON.stringify({ type: "start", room: gameId }));
+    console.log("start message sent")
   }
 
   function startGameForEveryone() {
-    if (isRunning) return;
-
-    isRunning = true;
     startBtn.style.display = "none";
     resetBtn.style.display = "none";
     document.addEventListener("keydown", handleKeydown);
-  }
-
-  function stopGame() {
-    isRunning = false;
-    if (gameIntervalId !== null) {
-      clearInterval(gameIntervalId);
-      gameIntervalId = null;
-    }
-    document.removeEventListener("keydown", handleKeydown);
-    resetBtn.style.display = "inline-block";
-    // Close WebSocket connection
-    // -----------------------------
-    if (state.socket) {
-      console.log("🔌 Closing WebSocket connection...");
-      state.socket.close();
-      state.socket = null;
-    }
-  }
-
-  function gameTick() {
-    // Apply buffered direction at tick start
-    if (!areOpposite(state.nextDirection, state.direction)) {
-      state.direction = state.nextDirection;
-    }
-
-    // Compute new head position
-    const head = state.snake[0];
-    const newHead = {
-      x: head.x + state.direction.x,
-      y: head.y + state.direction.y,
-    };
-
-    // Wall collision ends game
-    if (!isInsideBoard(newHead)) {
-      stopGame();
-      render();
-      drawLoseText();
-      return;
-    }
-
-    // Move snake: add new head
-    state.snake.unshift(newHead);
-
-    // Apple collision: grow by 1
-    if (positionsEqual(newHead, state.apple)) {
-      state.growPending += 1;
-      state.apple = spawnApple(state.snake);
-      state.score += 1;
-      updateScoreUI();
-    }
-
-    // If no growth pending, remove tail
-    if (state.growPending > 0) {
-      state.growPending -= 1;
-    } else {
-      state.snake.pop();
-    }
-
-    render();
   }
 
   // -----------------------------
@@ -242,17 +177,30 @@
   // Button hooks
   // -----------------------------
   startBtn.addEventListener("click", () => {
+    console.log("Start button clicked");
     render();
     startGame();
   });
 
   resetBtn.addEventListener("click", () => {
-    stopGame();
-    resetGame();
-    startBtn.style.display = "inline-block";
-    resetBtn.style.display = "none";
-    render();
-  });
+  console.log("Reset button clicked");
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "reset", room: gameId }));
+    console.log("✅ Reset message sent");
+  } else {
+    console.warn("⚠️ WebSocket not open, retrying in 500ms...");
+    setTimeout(() => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "reset", room: gameId }));
+        console.log("✅ Reset message sent after retry");
+      } else {
+        console.error("❌ Failed to send reset message — socket still closed");
+      }
+    }, 500);
+  }
+});
+
 
   // Initial render with start screen (not running)
   resetGame();
@@ -302,12 +250,33 @@
       render();
     }
 
+    if (data.type === "reset_game") {
+      console.log("Resetting game...");
+      startBtn.style.display = "inline-block";
+      resetBtn.style.display = "none";
+      function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v))    ;
+      }
+
+      for (const p of data.players) {
+        const x = clamp(p.x, 0, BOARD_COLS - 1);
+        const y = clamp(p.y, 0, BOARD_ROWS - 1);
+        state.snakes[p.playerId] = {
+          body: [{ x, y }],
+          color: p.snakeColor,
+        };
+      }
+
+      console.log("🐍 Snakes state after update:", state.snakes);
+      render();
+    }
+
     if (data.type == "game_starting") {
       startGameForEveryone();
     }
     if (data.type == "game_over") {
       console.log("Ending game...");
-      //stopGame();
+      startBtn.style.display = "none";
       resetBtn.style.display = "inline-block";
     }
   };
@@ -320,5 +289,5 @@
     console.error("⚠️ WebSocket error:", error);
   };
 
-  state.socket = socket;
+  
 })();
