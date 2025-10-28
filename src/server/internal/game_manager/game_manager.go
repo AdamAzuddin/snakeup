@@ -28,6 +28,7 @@ func generatePlayerId() int64 {
 
 type GameManager struct {
 	games []*game.Game
+	mu    sync.Mutex
 }
 
 func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
@@ -42,7 +43,9 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 		Broadcast:     make(chan []byte, 100),
 		Quit:          make(chan struct{}),
 	}
+	gm.mu.Lock()
 	gm.games = append(gm.games, &newGame)
+	gm.mu.Unlock()
 
 	go gm.runBroadcaster(&newGame)
 	return &newGame
@@ -134,6 +137,8 @@ func (gm *GameManager) processPlayerInput(g *game.Game, input *player.PlayerInpu
 }
 
 func (gm *GameManager) IsGameIdAlreadyExist(gameId string) bool {
+	gm.mu.Lock()
+	defer gm.mu.Unlock()
 	for _, game := range gm.games {
 		if game.Id == gameId {
 			return true
@@ -185,6 +190,40 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+// in game_manager/game_manager.go
+func (gm *GameManager) HandleRoomCapacity(w http.ResponseWriter, r *http.Request) {
+	// ✅ Always set CORS headers, even for OPTIONS
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// ✅ Handle preflight request
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	vars := mux.Vars(r)
+	gameId := vars["gameId"]
+
+	if gm.IsGameRoomAlreadyFull(gameId) {
+		http.Error(w, "Room is full", http.StatusForbidden)
+		return
+	}
+
+	if !gm.IsGameIdAlreadyExist(gameId) {
+		gm.CreateNewGame(gameId)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok","message":"Room joined successfully"}`))
+}
+
 func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract game ID from URL
 	vars := mux.Vars(r)
@@ -225,6 +264,7 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 		if !gm.IsGameRoomAlreadyFull(gameId) {
 			fmt.Printf("Adding player to an existing game with id %v\n", gameId)
 		} else {
+			//TODO: only navigate to game.html if the game room is not full
 			conn.Close()
 			return
 		}
