@@ -49,46 +49,42 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 }
 
 func (gm *GameManager) RunGame(g *game.Game) {
-	fmt.Printf("Running game loop for game id: %s\n", g.Id)
-	g.State = game.Running
-	// send game starting message to all the clients
-	msg := map[string]interface{}{
-		"type":   "game_starting",
-		"gameId": g.Id,
-	}
-
-	data, _ := json.Marshal(msg)
-
-	// Send the full roster to everyone
-	g.Broadcast <- data
-
-	ticker := time.NewTicker(20 * time.Millisecond)
+	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 
 	tickCount := 0
+	fmt.Printf("Running game loop for game id: %s\n", g.Id)
+	g.State = game.Running
+	var playersData []map[string]interface{}
+	for _, pl := range g.Players {
+		playersData = append(playersData, map[string]interface{}{
+			"playerId":   pl.Id,
+			"snakeColor": pl.SnakeColor.String(),
+			"x":          pl.X,
+			"y":          pl.Y})
+	}
+	msg := map[string]interface{}{
+		"type":      "game_starting",
+		"gameId":    g.Id,
+		"players":   playersData,
+		"tickCount": tickCount,
+	}
+	data, _ := json.Marshal(msg)
+	g.Broadcast <- data
+
 	for {
 		tickCount++
 		select {
 		case input := <-g.Input:
-			log.Printf("Game %s received input from player %s: %v\n", g.Id, input.PlayerId, input.Movement)
+			log.Printf("Game %s received input from player %v: %v\n", g.Id, input.PlayerId, input.Movement)
 			gm.processPlayerInput(g, &input)
-			
+
 		case <-ticker.C:
 			if g.State != game.Running {
 				continue
 			}
 
-			if tickCount%10 == 0 {
-				g.UpdatePlayersPositions()
-			}
-			tickMsg := map[string]interface{}{
-				"type":      "tick",
-				"gameId":    g.Id,
-				"tickCount": tickCount,
-			}
-			data, _ := json.Marshal(tickMsg)
-			g.Broadcast <- data
-
+			g.UpdatePlayersPositions()
 			if g.ContainCollisions() {
 				fmt.Println("Collision detected")
 				tickMsg := map[string]interface{}{
@@ -115,7 +111,26 @@ func (gm *GameManager) RunGame(g *game.Game) {
 }
 
 func (gm *GameManager) processPlayerInput(g *game.Game, input *player.PlayerInput) {
+	for _, pl := range g.Players {
+		if pl.Id != input.PlayerId {
+			continue
+		}
 
+		newX, newY := input.Movement.XOffset, input.Movement.YOffset
+
+		// Ignore same-axis inputs (to prevent reversing direction)
+		if (pl.StartingXOffset != 0 && newX != 0) || (pl.StartingYOffset != 0 && newY != 0) {
+			return
+		}
+
+		// Apply new direction if valid
+		if newX != 0 || newY != 0 {
+			pl.StartingXOffset = newX
+			pl.StartingYOffset = newY
+		}
+
+		pl.LastProcessedInputSeq = input.InputSeq
+	}
 }
 
 func (gm *GameManager) IsGameIdAlreadyExist(gameId string) bool {
@@ -250,18 +265,33 @@ func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
 		if msgType, ok := msg["type"].(string); ok {
 			switch msgType {
 			case "move":
-				// Convert to PlayerInput and send to game loop
-				if movement, ok := msg["direction"].(string); ok {
-					input := player.PlayerInput{
-						PlayerId: string(rune(p.Id)),
-						Movement: movement,
-					}
-					select {
-					case g.Input <- input:
-					default:
-						log.Printf("Game input channel full for player %d", p.Id)
-					}
+				move := player.MoveMessage{
+					Type:     "move",
+					PlayerID: uint64(msg["playerId"].(float64)),
+					XOffset:  int(msg["xOffset"].(float64)),
+					YOffset:  int(msg["yOffset"].(float64)),
 				}
+				if seq, ok := msg["seq"].(float64); ok {
+					move.InputSeq = int(seq)
+				}
+
+				log.Printf("Received move from player %v (seq=%v): xOff=%v, yOff=%v\n",
+					move.PlayerID, move.InputSeq, move.XOffset, move.YOffset)
+
+				input := player.PlayerInput{
+					PlayerId: move.PlayerID,
+					Movement: struct {
+						XOffset int
+						YOffset int
+					}{
+						XOffset: move.XOffset,
+						YOffset: move.YOffset,
+					},
+					InputSeq: move.InputSeq,
+				}
+
+				g.Input <- input
+
 			case "start":
 				room := msg["room"]
 				log.Printf("Player %d started the game in room %v (gameId: %s)", p.Id, room, g.Id)
@@ -269,7 +299,7 @@ func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
 			case "reset":
 				room := msg["room"]
 				log.Printf("Player %d reset the game in room %v (gameId: %s)", p.Id, room, g.Id)
-				
+
 				g.ResetGame()
 			}
 		}

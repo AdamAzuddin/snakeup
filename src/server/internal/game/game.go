@@ -24,7 +24,7 @@ type Game struct {
 	Input         chan player.PlayerInput
 	StopBroadcast chan bool
 	Broadcast     chan []byte
-	Quit		  chan struct{}
+	Quit          chan struct{}
 }
 
 var spawnPoints = []struct{ X, Y int }{
@@ -126,10 +126,12 @@ func (g *Game) ResetGame() {
 	var playersData []map[string]interface{}
 	for _, pl := range g.Players {
 		playersData = append(playersData, map[string]interface{}{
-			"playerId":   pl.Id,
-			"snakeColor": pl.SnakeColor.String(),
-			"x":          pl.X,
-			"y":          pl.Y})
+			"playerId":              pl.Id,
+			"snakeColor":            pl.SnakeColor.String(),
+			"x":                     pl.X,
+			"y":                     pl.Y,
+			"lastProcessedInputSeq": pl.LastProcessedInputSeq,
+		})
 	}
 	msg := map[string]interface{}{
 		"type":    "reset_game",

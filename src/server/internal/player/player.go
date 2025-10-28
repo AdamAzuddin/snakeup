@@ -11,6 +11,7 @@ type Player struct {
 	Send chan []byte
 	X, Y int
 	StartingXOffset, StartingYOffset int
+	LastProcessedInputSeq int
 }
 
 type SnakeColor int
@@ -48,7 +49,18 @@ func IsValidColor(color int) bool {
 }
 
 type PlayerInput struct {
-	PlayerId string
-	Movement string
-	Data     struct{}
+    PlayerId uint64
+    Movement struct {
+        XOffset int
+        YOffset int
+    }
+	InputSeq int
+}
+
+type MoveMessage struct {
+	Type     string `json:"type"`
+	PlayerID uint64 `json:"playerId"`
+	XOffset  int    `json:"xOffset"`
+	YOffset  int    `json:"yOffset"`
+	InputSeq int `json:"inputSeq"`
 }
