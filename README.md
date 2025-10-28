@@ -169,7 +169,7 @@ This will spin up:
 ## 📜 Roadmap
 
 - [x] Local snake prototype
-- [ ] Multiplayer WebSocket server
+- [x] Multiplayer WebSocket server
 - [ ] Account system + rooms
 - [ ] Procedural maps & powerups
 - [ ] Docker + CI/CD pipeline
