@@ -105,7 +105,6 @@
 
     if (mySnake) {
       applyInput(mySnake, newDir);
-      console.log("Predicted move", inputSeq, newDir);
       render();
     }
 
@@ -144,7 +143,6 @@
     resetBtn.style.display = "none";
     document.addEventListener("keydown", handleKeydown);
     socket.send(JSON.stringify({ type: "start", room: gameId }));
-    console.log("start message sent");
   }
 
   // -----------------------------
@@ -216,23 +214,18 @@
   // Button hooks
   // -----------------------------
   startBtn.addEventListener("click", () => {
-    console.log("Start button clicked");
     render();
     startGame();
   });
 
   resetBtn.addEventListener("click", () => {
-    console.log("Reset button clicked");
-
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "reset", room: gameId }));
-      console.log("✅ Reset message sent");
     } else {
       console.warn("⚠️ WebSocket not open, retrying in 500ms...");
       setTimeout(() => {
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ type: "reset", room: gameId }));
-          console.log("✅ Reset message sent after retry");
         } else {
           console.error(
             "❌ Failed to send reset message — socket still closed"
@@ -265,7 +258,6 @@
 
   socket.onmessage = (event) => {
     const data = JSON.parse(event.data);
-    //console.log("📩 Message from server:", data);
 
     if (data.type == "player_init") {
       myPlayerId = data.playerId;
@@ -311,7 +303,6 @@
             applyInput(mySnake, inp.dir);
           }
           state.snakes[myPlayerId] = mySnake;
-          console.log("Reconciled with server, pending:", pendingInputs.length);
         } else {
           state.snakes[p.playerId] = {
             body: [{ x, y }],
@@ -321,12 +312,10 @@
         }
       }
 
-      //console.log("🐍 Snakes state after update:", state.snakes);
       render();
     }
 
     if (data.type === "reset_game") {
-      console.log("Resetting game...");
       startBtn.style.display = "inline-block";
       resetBtn.style.display = "none";
       function clamp(v, min, max) {
@@ -343,8 +332,6 @@
           mySnake: isMySnake,
         };
       }
-
-      console.log("🐍 Snakes state after update:", state.snakes);
       render();
     }
 
@@ -361,9 +348,6 @@
             color: p.snakeColor,
             mySnake: isMySnake,
           };
-          console.log(
-            `[Client Tick ?] Player ${p.playerId} position: (${p.x}, ${p.y})`
-          );
         }
         console.log(
           "Starting position of snakes:",
