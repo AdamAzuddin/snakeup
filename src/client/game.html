@@ -6,15 +6,22 @@
     <title>SnakeUp</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
+
+  <style>
+    #gameCanvas {
+      width: 100vw;
+      height: 100vh;
+      margin: 0 auto;
+    }
+  </style>
   <body>
-    <h1>Snake Up!</h1>
+    <div id="controls">
+      <button id="startBtn">Start Game</button>
+      <button id="resetBtn" style="display: none">Start Over</button>
+      <div id="score">Score: <span id="scoreValue">0</span></div>
+    </div>
     <div id="gameContainer">
-      <canvas id="gameCanvas" width="600" height="400"></canvas>
-      <div id="controls">
-        <button id="startBtn">Start Game</button>
-        <button id="resetBtn" style="display: none">Start Over</button>
-        <div id="score">Score: <span id="scoreValue">0</span></div>
-      </div>
+      <canvas id="gameCanvas"></canvas>
     </div>
     <script src="game.js"></script>
   </body>

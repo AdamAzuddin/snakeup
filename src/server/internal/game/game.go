@@ -20,6 +20,8 @@ type Game struct {
 	Id            string
 	Players       []*player.Player
 	State         GameState
+	Width         int
+	Height        int
 	Updates       chan GameState
 	Input         chan player.PlayerInput
 	StopBroadcast chan bool
@@ -109,8 +111,8 @@ func (g *Game) ContainCollisions() bool {
 func (g *Game) UpdatePlayersPositions() {
 	// update each player's position based on their starting offsets
 	for i := range g.Players {
-		g.Players[i].X = (g.Players[i].X + g.Players[i].StartingXOffset + 26) % 26
-		g.Players[i].Y = (g.Players[i].Y + g.Players[i].StartingYOffset + 20) % 20
+		g.Players[i].X = (g.Players[i].X + g.Players[i].StartingXOffset + g.Width) % g.Width
+		g.Players[i].Y = (g.Players[i].Y + g.Players[i].StartingYOffset + g.Height) % g.Height
 	}
 
 	// build tick message with updated positions

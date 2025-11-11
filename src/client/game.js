@@ -8,9 +8,8 @@
   const canvas = document.getElementById("gameCanvas");
   const ctx = canvas.getContext("2d");
 
-  const GRID_SIZE = 20; // width/height of one grid cell in pixels
-  const BOARD_COLS = Math.floor(canvas.width / GRID_SIZE);
-  const BOARD_ROWS = Math.floor(canvas.height / GRID_SIZE);
+  const WORLD_COLS = 178/2;
+  const WORLD_ROWS = 100/2;
 
   const SNAKE_COLOR = "#1976d2"; // blue (fallback)
   const APPLE_COLOR = "#d32f2f"; // red
@@ -19,6 +18,31 @@
   const startBtn = document.getElementById("startBtn");
   const resetBtn = document.getElementById("resetBtn");
   const scoreValueEl = document.getElementById("scoreValue");
+  let scaleX = 1;
+  let scaleY = 1;
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    console.log("Canvas resized");
+
+    // Use a single scale factor to keep cells square
+    const scale = Math.min(
+      canvas.width / WORLD_COLS,
+      canvas.height / WORLD_ROWS
+    );
+
+    // Save scale for rendering
+    scaleX = scale;
+    scaleY = scale;
+
+    // Center the game board
+    offsetX = (canvas.width - WORLD_COLS * scale) / 2;
+    offsetY = (canvas.height - WORLD_ROWS * scale) / 2;
+
+    clearBoard();
+    render();
+  }
 
   // -----------------------------
   // Game State
@@ -69,8 +93,8 @@
     let pos;
     do {
       pos = {
-        x: randomInt(0, BOARD_COLS - 1),
-        y: randomInt(0, BOARD_ROWS - 1),
+        x: randomInt(0, WORLD_COLS - 1),
+        y: randomInt(0, WORLD_ROWS - 1),
       };
     } while (snake.some((seg) => positionsEqual(seg, pos)));
     return pos;
@@ -153,18 +177,17 @@
   }
 
   function drawCell(pos, color, isMySnake) {
-    const x = pos.x * GRID_SIZE;
-    const y = pos.y * GRID_SIZE;
-
+    const x = offsetX + pos.x * scaleX;
+    const y = offsetY + pos.y * scaleY;
     // Draw the main snake body
     ctx.fillStyle = color;
-    ctx.fillRect(x, y, GRID_SIZE, GRID_SIZE);
+    ctx.fillRect(x, y, scaleX, scaleY);
 
     if (isMySnake) {
       // Draw a black border around your snake
       ctx.lineWidth = 2;
       ctx.strokeStyle = "black";
-      ctx.strokeRect(x, y, GRID_SIZE, GRID_SIZE);
+      ctx.strokeRect(x, y, scaleX, scaleY);
 
       // Optional: add a shadow glow effect
       ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
@@ -239,6 +262,8 @@
   resetGame();
   clearBoard();
   render();
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas(); // call once on startup
 
   // connect with websocket
   const gameId = sessionStorage.getItem("gameId") || "1";
@@ -284,8 +309,8 @@
         return Math.max(min, Math.min(max, v));
       }
       for (const p of data.players) {
-        const x = clamp(p.x, 0, BOARD_COLS - 1);
-        const y = clamp(p.y, 0, BOARD_ROWS - 1);
+        const x = clamp(p.x, 0, WORLD_COLS - 1);
+        const y = clamp(p.y, 0, WORLD_ROWS - 1);
         const isMySnake = myPlayerId == p.playerId;
 
         if (isMySnake) {
@@ -323,8 +348,8 @@
       }
 
       for (const p of data.players) {
-        const x = clamp(p.x, 0, BOARD_COLS - 1);
-        const y = clamp(p.y, 0, BOARD_ROWS - 1);
+        const x = clamp(p.x, 0, WORLD_COLS - 1);
+        const y = clamp(p.y, 0, WORLD_ROWS - 1);
         const isMySnake = myPlayerId == p.playerId;
         state.snakes[p.playerId] = {
           body: [{ x, y }],

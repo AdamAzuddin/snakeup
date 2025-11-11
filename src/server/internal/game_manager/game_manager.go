@@ -37,6 +37,8 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 		Id:            gameId,
 		State:         game.Init,
 		Players:       make([]*player.Player, 0, MAX_NO_PLAYERS_IN_A_ROOM),
+		Width: 178/2,
+		Height: 100/2,
 		Updates:       make(chan game.GameState, 100),
 		Input:         make(chan player.PlayerInput, 100),
 		StopBroadcast: make(chan bool),
