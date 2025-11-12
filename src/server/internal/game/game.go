@@ -3,6 +3,7 @@ package game
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"sync"
 
 	"github.com/AdamAzuddin/snakeup/server/internal/player"
@@ -29,12 +30,11 @@ type Game struct {
 	Quit          chan struct{}
 }
 
-var spawnPoints = []struct{ X, Y int }{
-	{5, 5},   // top-left
-	{25, 5},  // top-right
-	{5, 35},  // bottom-left
-	{25, 25}, // bottom-right
+type Position struct{
+	X int
+	Y int
 }
+
 
 var startingOffsets = []struct{ xOffset, yOffset int }{
 	{0, 1},
@@ -45,6 +45,28 @@ var startingOffsets = []struct{ xOffset, yOffset int }{
 
 var colorMux sync.Mutex
 var snakeColorCount int
+
+func (g *Game) getRandomPosition() Position {
+    for {
+        pos := Position{
+            X: rand.Intn(g.Width-4), // added a bit offset so the snake wont spawn off screen
+            Y: rand.Intn(g.Height-4),
+        }
+
+        collision := false
+        for _, pl := range g.Players {
+            if pl.X == pos.X && pl.Y == pos.Y {
+                collision = true
+                break
+            }
+        }
+
+        if !collision {
+            return pos
+        }
+    }
+}
+
 
 func getColor() player.SnakeColor {
 	colorMux.Lock()
@@ -78,9 +100,10 @@ func (g *Game) AddPlayer(p *player.Player) {
 	fmt.Printf("Adding player with id: %v \n", p.Id)
 	p.SnakeColor = player.SnakeColor(getColor())
 	fmt.Printf("Adding player with color id: %v\n", p.SnakeColor)
-	if len(g.Players) < len(spawnPoints) {
-		p.X = spawnPoints[p.SnakeColor].X
-		p.Y = spawnPoints[p.SnakeColor].Y
+	if len(g.Players) < 4 {
+		pos:=g.getRandomPosition()
+		p.X = pos.X
+		p.Y = pos.Y
 		p.StartingXOffset = startingOffsets[p.SnakeColor].xOffset
 		p.StartingYOffset = startingOffsets[p.SnakeColor].yOffset
 	} else {
@@ -99,8 +122,9 @@ func (g *Game) ContainCollisions() bool {
 	for _, p := range g.Players {
 		// check if any set of x AND Y is the same for any of the snakes
 		key := fmt.Sprintf("%v,%v", p.X, p.Y)
-
+		fmt.Println("Checking position:", key)
 		if positions[key] {
+			fmt.Println("Collision detected at:", key)
 			return true
 		}
 		positions[key] = true
@@ -122,8 +146,9 @@ func (g *Game) UpdatePlayersPositions() {
 func (g *Game) ResetGame() {
 	g.State = Init
 	for _, p := range g.Players {
-		p.X = spawnPoints[p.SnakeColor].X
-		p.Y = spawnPoints[p.SnakeColor].Y
+		pos:=g.getRandomPosition()
+		p.X = pos.X
+		p.Y = pos.Y
 	}
 	var playersData []map[string]interface{}
 	for _, pl := range g.Players {
