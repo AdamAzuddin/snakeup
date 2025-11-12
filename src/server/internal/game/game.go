@@ -90,7 +90,7 @@ func (g *Game) BroadcastPlayersData() {
 		"type":    "players_update",
 		"gameId":  g.Id,
 		"players": playersData,
-		"apple":g.Apple,
+		"apple":   g.Apple,
 	}
 	data, _ := json.Marshal(msg)
 	g.Broadcast <- data
@@ -117,12 +117,11 @@ func (g *Game) AddPlayer(p *player.Player) {
 	g.BroadcastPlayersData()
 }
 
-func (g *Game) ContainCollisions() bool {
+func (g *Game) ContainSnakesCollision() bool {
 	positions := make(map[string]bool)
 	for _, p := range g.Players {
 		// check if any set of x AND Y is the same for any of the snakes
 		key := fmt.Sprintf("%v,%v", p.X, p.Y)
-		fmt.Println("Checking position:", key)
 		if positions[key] {
 			fmt.Println("Collision detected at:", key)
 			return true
@@ -130,6 +129,15 @@ func (g *Game) ContainCollisions() bool {
 		positions[key] = true
 	}
 	return false
+}
+
+func (g *Game) ContainAppleCollision() (bool, *player.Player) {
+	for _, p := range g.Players {
+		if (p.X==g.Apple.X && p.Y==g.Apple.Y) {
+			return true,p
+		}
+	}
+	return false, nil
 }
 
 func (g *Game) UpdatePlayersPositions() {

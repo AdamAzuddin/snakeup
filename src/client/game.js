@@ -396,6 +396,16 @@
       startBtn.style.display = "none";
       resetBtn.style.display = "inline-block";
     }
+
+    if (data.type == "update_score") {
+      state.score = data.newScore;
+      state.apple.x = data.apple.X;
+      state.apple.y = data.apple.Y;
+      if (data.playerId == myPlayerId) {
+        updateScoreUI();
+      }
+      render();
+    }
   };
 
   socket.onclose = () => {

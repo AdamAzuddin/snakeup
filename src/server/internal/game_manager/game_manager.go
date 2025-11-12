@@ -37,8 +37,8 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 		Id:            gameId,
 		State:         game.Init,
 		Players:       make([]*player.Player, 0, MAX_NO_PLAYERS_IN_A_ROOM),
-		Width: 178/2,
-		Height: 100/2,
+		Width:         178 / 2,
+		Height:        100 / 2,
 		Updates:       make(chan game.GameState, 100),
 		Input:         make(chan player.PlayerInput, 100),
 		StopBroadcast: make(chan bool),
@@ -78,7 +78,7 @@ func (gm *GameManager) RunGame(g *game.Game) {
 		"type":      "game_starting",
 		"gameId":    g.Id,
 		"players":   playersData,
-		"apple": g.Apple,
+		"apple":     g.Apple,
 		"tickCount": tickCount,
 	}
 	data, _ := json.Marshal(msg)
@@ -97,7 +97,7 @@ func (gm *GameManager) RunGame(g *game.Game) {
 			}
 
 			g.UpdatePlayersPositions()
-			if g.ContainCollisions() {
+			if g.ContainSnakesCollision() {
 				fmt.Println("Collision detected")
 				tickMsg := map[string]interface{}{
 					"type":   "game_over",
@@ -107,6 +107,23 @@ func (gm *GameManager) RunGame(g *game.Game) {
 				g.State = game.End
 				g.Broadcast <- data
 				g.Updates <- game.End
+			}
+
+			hasAppleCollision, playerCollidedWithApple := g.ContainAppleCollision()
+
+			if hasAppleCollision {
+				playerCollidedWithApple.Score++
+				g.Apple = g.GetRandomPosition()
+				tickMsg := map[string]interface{}{
+					"type":     "update_score",
+					"playerId": playerCollidedWithApple.Id,
+					"newScore": playerCollidedWithApple.Score,
+					"apple": g.Apple,
+					"gameId":   g.Id,
+				}
+				
+				data, _ := json.Marshal(tickMsg)
+				g.Broadcast <- data
 			}
 		case state := <-g.Updates:
 			switch state {
