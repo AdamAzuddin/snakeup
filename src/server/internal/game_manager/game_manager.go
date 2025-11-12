@@ -60,6 +60,8 @@ func (gm *GameManager) RunGame(g *game.Game) {
 	tickCount := 0
 	fmt.Printf("Running game loop for game id: %s\n", g.Id)
 	g.State = game.Running
+
+	// Init players
 	var playersData []map[string]interface{}
 	for _, pl := range g.Players {
 		playersData = append(playersData, map[string]interface{}{
@@ -68,10 +70,15 @@ func (gm *GameManager) RunGame(g *game.Game) {
 			"x":          pl.X,
 			"y":          pl.Y})
 	}
+
+	// Init apple
+	g.Apple = g.GetRandomPosition()
+
 	msg := map[string]interface{}{
 		"type":      "game_starting",
 		"gameId":    g.Id,
 		"players":   playersData,
+		"apple": g.Apple,
 		"tickCount": tickCount,
 	}
 	data, _ := json.Marshal(msg)

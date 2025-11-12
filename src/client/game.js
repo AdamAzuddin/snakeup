@@ -8,8 +8,8 @@
   const canvas = document.getElementById("gameCanvas");
   const ctx = canvas.getContext("2d");
 
-  const WORLD_COLS = 178/2;
-  const WORLD_ROWS = 100/2;
+  const WORLD_COLS = 178 / 2;
+  const WORLD_ROWS = 100 / 2;
 
   const SNAKE_COLOR = "#1976d2"; // blue (fallback)
   const APPLE_COLOR = "#d32f2f"; // red
@@ -20,6 +20,8 @@
   const scoreValueEl = document.getElementById("scoreValue");
   let scaleX = 1;
   let scaleY = 1;
+  let offsetX = 0;
+  let offsetY = 0;
 
   function resizeCanvas() {
     canvas.width = window.innerWidth;
@@ -56,7 +58,7 @@
     snakes: {},
     direction: { x: 1, y: 0 },
     nextDirection: { x: 1, y: 0 },
-    apple: spawnApple([{ x: 5, y: 5 }]), // pass initial snake
+    apple: { x: null, y: null },
     growPending: 0,
     tickMs: 120,
     score: 0,
@@ -154,7 +156,7 @@
     state.snakes = {};
     state.direction = { x: 1, y: 0 };
     state.nextDirection = { x: 1, y: 0 };
-    state.apple = { x: 0, y: 0 };
+    state.apple = { x: null, y: null };
     state.growPending = 0;
     state.score = 0;
     // Don't reset snakeColor - keep it from server
@@ -176,7 +178,7 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  function drawCell(pos, color, isMySnake) {
+  function drawCell(pos, color, isMySnake = false) {
     const x = offsetX + pos.x * scaleX;
     const y = offsetY + pos.y * scaleY;
     // Draw the main snake body
@@ -211,7 +213,9 @@
   }
 
   function drawApple() {
-    drawCell(state.apple, APPLE_COLOR);
+    if (state.apple.x != null && state.apple.y != null) {
+      drawCell(state.apple, APPLE_COLOR);
+    }
   }
 
   function drawLoseText() {
@@ -225,7 +229,7 @@
 
   function render() {
     clearBoard();
-    //drawApple();
+    drawApple();
     drawSnakes();
   }
 
@@ -363,6 +367,9 @@
     if (data.type == "game_starting") {
       // set the snake states locally.
       serverTick = data.tickCount;
+      console.log(data.apple);
+      state.apple.x = data.apple.X;
+      state.apple.y = data.apple.Y;
       if (serverTick === 0) {
         for (const p of data.players) {
           const x = p.x;

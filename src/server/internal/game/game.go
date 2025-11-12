@@ -20,6 +20,7 @@ const (
 type Game struct {
 	Id            string
 	Players       []*player.Player
+	Apple         Position
 	State         GameState
 	Width         int
 	Height        int
@@ -30,11 +31,10 @@ type Game struct {
 	Quit          chan struct{}
 }
 
-type Position struct{
+type Position struct {
 	X int
 	Y int
 }
-
 
 var startingOffsets = []struct{ xOffset, yOffset int }{
 	{0, 1},
@@ -46,27 +46,26 @@ var startingOffsets = []struct{ xOffset, yOffset int }{
 var colorMux sync.Mutex
 var snakeColorCount int
 
-func (g *Game) getRandomPosition() Position {
-    for {
-        pos := Position{
-            X: rand.Intn(g.Width-4), // added a bit offset so the snake wont spawn off screen
-            Y: rand.Intn(g.Height-4),
-        }
+func (g *Game) GetRandomPosition() Position {
+	for {
+		pos := Position{
+			X: rand.Intn(g.Width - 4), // added a bit offset so the snake wont spawn off screen
+			Y: rand.Intn(g.Height - 4),
+		}
 
-        collision := false
-        for _, pl := range g.Players {
-            if pl.X == pos.X && pl.Y == pos.Y {
-                collision = true
-                break
-            }
-        }
+		collision := false
+		for _, pl := range g.Players {
+			if pl.X == pos.X && pl.Y == pos.Y {
+				collision = true
+				break
+			}
+		}
 
-        if !collision {
-            return pos
-        }
-    }
+		if !collision {
+			return pos
+		}
+	}
 }
-
 
 func getColor() player.SnakeColor {
 	colorMux.Lock()
@@ -91,6 +90,7 @@ func (g *Game) BroadcastPlayersData() {
 		"type":    "players_update",
 		"gameId":  g.Id,
 		"players": playersData,
+		"apple":g.Apple,
 	}
 	data, _ := json.Marshal(msg)
 	g.Broadcast <- data
@@ -101,7 +101,7 @@ func (g *Game) AddPlayer(p *player.Player) {
 	p.SnakeColor = player.SnakeColor(getColor())
 	fmt.Printf("Adding player with color id: %v\n", p.SnakeColor)
 	if len(g.Players) < 4 {
-		pos:=g.getRandomPosition()
+		pos := g.GetRandomPosition()
 		p.X = pos.X
 		p.Y = pos.Y
 		p.StartingXOffset = startingOffsets[p.SnakeColor].xOffset
@@ -146,7 +146,7 @@ func (g *Game) UpdatePlayersPositions() {
 func (g *Game) ResetGame() {
 	g.State = Init
 	for _, p := range g.Players {
-		pos:=g.getRandomPosition()
+		pos := g.GetRandomPosition()
 		p.X = pos.X
 		p.Y = pos.Y
 	}
