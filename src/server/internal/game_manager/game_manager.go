@@ -266,7 +266,6 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 		if !gm.IsGameRoomAlreadyFull(gameId) {
 			fmt.Printf("Adding player to an existing game with id %v\n", gameId)
 		} else {
-			//TODO: only navigate to game.html if the game room is not full
 			conn.Close()
 			return
 		}
