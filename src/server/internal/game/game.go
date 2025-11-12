@@ -157,6 +157,7 @@ func (g *Game) ResetGame() {
 		pos := g.GetRandomPosition()
 		p.X = pos.X
 		p.Y = pos.Y
+		p.Score = 0
 	}
 	var playersData []map[string]interface{}
 	for _, pl := range g.Players {

@@ -118,10 +118,10 @@ func (gm *GameManager) RunGame(g *game.Game) {
 					"type":     "update_score",
 					"playerId": playerCollidedWithApple.Id,
 					"newScore": playerCollidedWithApple.Score,
-					"apple": g.Apple,
+					"apple":    g.Apple,
 					"gameId":   g.Id,
 				}
-				
+
 				data, _ := json.Marshal(tickMsg)
 				g.Broadcast <- data
 			}
@@ -366,6 +366,13 @@ func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
 				log.Printf("Player %d reset the game in room %v (gameId: %s)", p.Id, room, g.Id)
 
 				g.ResetGame()
+				msg := map[string]interface{}{
+					"type":       "game_resetted",
+					"gameId":     p.GameId,
+				}
+
+				data, _ := json.Marshal(msg)
+				g.Broadcast <- data
 			}
 		}
 	}

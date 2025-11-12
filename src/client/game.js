@@ -248,6 +248,7 @@
   resetBtn.addEventListener("click", () => {
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "reset", room: gameId }));
+      resetGame();
     } else {
       console.warn("⚠️ WebSocket not open, retrying in 500ms...");
       setTimeout(() => {
@@ -404,6 +405,13 @@
       if (data.playerId == myPlayerId) {
         updateScoreUI();
       }
+      render();
+    }
+
+    if (data.type == "game_resetted") {
+      state.score = 0;
+      state.apple = { x: null, y: null };
+      updateScoreUI();
       render();
     }
   };
