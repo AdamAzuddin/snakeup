@@ -20,7 +20,7 @@ const (
 type Game struct {
 	Id            string
 	Players       []*player.Player
-	Apple         Position
+	Apple         player.Position
 	State         GameState
 	Width         int
 	Height        int
@@ -29,11 +29,6 @@ type Game struct {
 	StopBroadcast chan bool
 	Broadcast     chan []byte
 	Quit          chan struct{}
-}
-
-type Position struct {
-	X int
-	Y int
 }
 
 var startingOffsets = []struct{ xOffset, yOffset int }{
@@ -46,17 +41,29 @@ var startingOffsets = []struct{ xOffset, yOffset int }{
 var colorMux sync.Mutex
 var snakeColorCount int
 
-func (g *Game) GetRandomPosition() Position {
+func (g *Game) GetRandomPosition() player.Position {
 	for {
-		pos := Position{
-			X: rand.Intn(g.Width - 4), // added a bit offset so the snake wont spawn off screen
+		pos := player.Position{
+			X: rand.Intn(g.Width - 4), // optional offset
 			Y: rand.Intn(g.Height - 4),
 		}
 
 		collision := false
 		for _, pl := range g.Players {
-			if pl.X == pos.X && pl.Y == pos.Y {
-				collision = true
+			if pl.Snake == nil || pl.Snake.Body == nil {
+				continue
+			}
+
+			// check all snake segments
+			for e := pl.Snake.Body.Front(); e != nil; e = e.Next() {
+				seg := e.Value.(player.Position)
+				if seg.X == pos.X && seg.Y == pos.Y {
+					collision = true
+					break
+				}
+			}
+
+			if collision {
 				break
 			}
 		}
@@ -79,19 +86,33 @@ func getColor() player.SnakeColor {
 
 func (g *Game) BroadcastPlayersData() {
 	var playersData []map[string]interface{}
+
 	for _, pl := range g.Players {
+		// Convert snake body (linked list) into slice of positions
+		var bodyPositions []map[string]int
+		for e := pl.Snake.Body.Front(); e != nil; e = e.Next() {
+			pos := e.Value.(player.Position)
+			bodyPositions = append(bodyPositions, map[string]int{
+				"x": pos.X,
+				"y": pos.Y,
+			})
+		}
+
 		playersData = append(playersData, map[string]interface{}{
 			"playerId":   pl.Id,
 			"snakeColor": pl.SnakeColor.String(),
-			"x":          pl.X,
-			"y":          pl.Y})
+			"body":       bodyPositions, // send the whole body
+			"length":     pl.Snake.Body.Len(),
+		})
 	}
+
 	msg := map[string]interface{}{
 		"type":    "players_update",
 		"gameId":  g.Id,
 		"players": playersData,
 		"apple":   g.Apple,
 	}
+
 	data, _ := json.Marshal(msg)
 	g.Broadcast <- data
 }
@@ -102,13 +123,10 @@ func (g *Game) AddPlayer(p *player.Player) {
 	fmt.Printf("Adding player with color id: %v\n", p.SnakeColor)
 	if len(g.Players) < 4 {
 		pos := g.GetRandomPosition()
-		p.X = pos.X
-		p.Y = pos.Y
-		p.StartingXOffset = startingOffsets[p.SnakeColor].xOffset
-		p.StartingYOffset = startingOffsets[p.SnakeColor].yOffset
+		p.Snake = player.NewSnake(pos.X, pos.Y, player.Direction{X: startingOffsets[p.SnakeColor].xOffset, Y: startingOffsets[p.SnakeColor].yOffset})
 	} else {
 		// fallback if more players somehow
-		p.X, p.Y = 20, 20
+		p.Snake = player.NewSnake(20, 20, player.Direction{X: 1, Y: 0})
 	}
 
 	g.Players = append(g.Players, p)
@@ -117,24 +135,56 @@ func (g *Game) AddPlayer(p *player.Player) {
 	g.BroadcastPlayersData()
 }
 
-func (g *Game) ContainSnakesCollision() bool {
-	positions := make(map[string]bool)
-	for _, p := range g.Players {
-		// check if any set of x AND Y is the same for any of the snakes
-		key := fmt.Sprintf("%v,%v", p.X, p.Y)
-		if positions[key] {
-			fmt.Println("Collision detected at:", key)
-			return true
-		}
-		positions[key] = true
-	}
-	return false
+// Returns the player whose body was collided into (winner) and
+// the player whose head collided (loser), or nil, nil if no collision.
+func (g *Game) ContainSnakesCollision() (winner *player.Player, loser *player.Player, isDraw bool) {
+    // Map to track all body positions (excluding heads)
+    bodyPositions := make(map[string]*player.Player)
+    headPositions := make(map[string]*player.Player)
+
+    for _, p := range g.Players {
+        // Track head positions separately
+        head := p.Snake.Body.Front().Value.(player.Position)
+        headKey := fmt.Sprintf("%v,%v", head.X, head.Y)
+        headPositions[headKey] = p
+
+        // Skip head, store body positions
+        e := p.Snake.Body.Front().Next()
+        for ; e != nil; e = e.Next() {
+            pos := e.Value.(player.Position)
+            key := fmt.Sprintf("%v,%v", pos.X, pos.Y)
+            bodyPositions[key] = p
+        }
+    }
+
+    // Check head collisions
+    for _, p := range g.Players {
+        head := p.Snake.Body.Front().Value.(player.Position)
+        key := fmt.Sprintf("%v,%v", head.X, head.Y)
+
+        // Check head-to-body collision
+        if hitPlayer, exists := bodyPositions[key]; exists {
+            fmt.Println("Collision detected! Head of player", p.Id, "hit body of player", hitPlayer.Id)
+            return hitPlayer, p, false
+        }
+
+        // Check head-to-head collision
+        if otherPlayer, exists := headPositions[key]; exists && otherPlayer.Id != p.Id {
+            fmt.Println("Collision detected! Head of player", p.Id, "hit head of player", otherPlayer.Id)
+            return otherPlayer, p, true // arbitrarily treat otherPlayer as winner
+        }
+    }
+
+    return nil, nil, false // no collision
 }
+
+
 
 func (g *Game) ContainAppleCollision() (bool, *player.Player) {
 	for _, p := range g.Players {
-		if (p.X==g.Apple.X && p.Y==g.Apple.Y) {
-			return true,p
+		headPos := p.Snake.Body.Front().Value.(player.Position)
+		if headPos.X == g.Apple.X && headPos.Y == g.Apple.Y {
+			return true, p
 		}
 	}
 	return false, nil
@@ -143,8 +193,7 @@ func (g *Game) ContainAppleCollision() (bool, *player.Player) {
 func (g *Game) UpdatePlayersPositions() {
 	// update each player's position based on their starting offsets
 	for i := range g.Players {
-		g.Players[i].X = (g.Players[i].X + g.Players[i].StartingXOffset + g.Width) % g.Width
-		g.Players[i].Y = (g.Players[i].Y + g.Players[i].StartingYOffset + g.Height) % g.Height
+		g.Players[i].Snake.Move(g.Width, g.Height)
 	}
 
 	// build tick message with updated positions
@@ -155,18 +204,19 @@ func (g *Game) ResetGame() {
 	g.State = Init
 	for _, p := range g.Players {
 		pos := g.GetRandomPosition()
-		p.X = pos.X
-		p.Y = pos.Y
+		p.Snake = player.NewSnake(pos.X, pos.Y, player.Direction{X: startingOffsets[p.SnakeColor].xOffset, Y: startingOffsets[p.SnakeColor].yOffset})
 		p.Score = 0
 	}
 	var playersData []map[string]interface{}
 	for _, pl := range g.Players {
+		headPos := pl.Snake.Body.Front().Value.(player.Position)
 		playersData = append(playersData, map[string]interface{}{
 			"playerId":              pl.Id,
 			"snakeColor":            pl.SnakeColor.String(),
-			"x":                     pl.X,
-			"y":                     pl.Y,
+			"x":                     headPos.X,
+			"y":                     headPos.Y,
 			"lastProcessedInputSeq": pl.LastProcessedInputSeq,
+			"length":                pl.Snake.Body.Len(),
 		})
 	}
 	msg := map[string]interface{}{

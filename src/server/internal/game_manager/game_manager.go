@@ -62,13 +62,15 @@ func (gm *GameManager) RunGame(g *game.Game) {
 	g.State = game.Running
 
 	// Init players
+
 	var playersData []map[string]interface{}
 	for _, pl := range g.Players {
+		headPos := pl.Snake.Body.Front().Value.(player.Position) // type assertion
 		playersData = append(playersData, map[string]interface{}{
 			"playerId":   pl.Id,
 			"snakeColor": pl.SnakeColor.String(),
-			"x":          pl.X,
-			"y":          pl.Y})
+			"x":          headPos.X,
+			"y":          headPos.Y})
 	}
 
 	// Init apple
@@ -97,8 +99,15 @@ func (gm *GameManager) RunGame(g *game.Game) {
 			}
 
 			g.UpdatePlayersPositions()
-			if g.ContainSnakesCollision() {
+			winner, loser, isDraw := g.ContainSnakesCollision()
+			if winner != nil && loser != nil {
 				fmt.Println("Collision detected")
+				if !isDraw {
+					if winner != loser {
+						winner.Score++
+					}
+					loser.Score = 0
+				}
 				tickMsg := map[string]interface{}{
 					"type":   "game_over",
 					"gameId": g.Id,
@@ -113,6 +122,7 @@ func (gm *GameManager) RunGame(g *game.Game) {
 
 			if hasAppleCollision {
 				playerCollidedWithApple.Score++
+				playerCollidedWithApple.Snake.Grow(1)
 				g.Apple = g.GetRandomPosition()
 				tickMsg := map[string]interface{}{
 					"type":     "update_score",
@@ -145,17 +155,19 @@ func (gm *GameManager) processPlayerInput(g *game.Game, input *player.PlayerInpu
 			continue
 		}
 
-		newX, newY := input.Movement.XOffset, input.Movement.YOffset
+		newX, newY := input.Movement.X, input.Movement.Y
 
-		// Ignore same-axis inputs (to prevent reversing direction)
-		if (pl.StartingXOffset != 0 && newX != 0) || (pl.StartingYOffset != 0 && newY != 0) {
+		// Ignore reverse direction: can't move directly opposite current head direction
+		currentDir := pl.Snake.Dir
+		if (currentDir.X != 0 && newX != 0 && currentDir.X != newX) ||
+			(currentDir.Y != 0 && newY != 0 && currentDir.Y != newY) {
+			// invalid input: trying to reverse
 			return
 		}
 
 		// Apply new direction if valid
 		if newX != 0 || newY != 0 {
-			pl.StartingXOffset = newX
-			pl.StartingYOffset = newY
+			pl.Snake.Turn(player.Direction{X: newX, Y: newY})
 		}
 
 		pl.LastProcessedInputSeq = input.InputSeq
@@ -295,14 +307,16 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	currentGame.AddPlayer(p)
+	headPos := p.Snake.Body.Front().Value.(player.Position) // type assertion
 
 	msg := map[string]interface{}{
 		"type":       "player_init",
 		"gameId":     p.GameId,
 		"playerId":   p.Id,
 		"snakeColor": p.SnakeColor,
-		"XPos":       p.X,
-		"YPos":       p.Y,
+		"XPos":       headPos.X,
+		"YPos":       headPos.Y,
+		"length":     p.Snake.Body.Len(),
 	}
 
 	data, _ := json.Marshal(msg)
@@ -345,13 +359,8 @@ func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
 
 				input := player.PlayerInput{
 					PlayerId: move.PlayerID,
-					Movement: struct {
-						XOffset int
-						YOffset int
-					}{
-						XOffset: move.XOffset,
-						YOffset: move.YOffset,
-					},
+					Movement: player.Direction{X: move.XOffset,
+						Y: move.YOffset},
 					InputSeq: move.InputSeq,
 				}
 
@@ -367,8 +376,8 @@ func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
 
 				g.ResetGame()
 				msg := map[string]interface{}{
-					"type":       "game_resetted",
-					"gameId":     p.GameId,
+					"type":   "game_resetted",
+					"gameId": p.GameId,
 				}
 
 				data, _ := json.Marshal(msg)

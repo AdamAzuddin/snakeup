@@ -181,7 +181,7 @@
   function drawCell(pos, color, isMySnake = false) {
     const x = offsetX + pos.x * scaleX;
     const y = offsetY + pos.y * scaleY;
-    // Draw the main snake body
+    // Draw the main snake bodymy
     ctx.fillStyle = color;
     ctx.fillRect(x, y, scaleX, scaleY);
 
@@ -206,7 +206,9 @@
   function drawSnakes() {
     for (const [id, snake] of Object.entries(state.snakes)) {
       const color = snake.color || SNAKE_COLOR;
+      console.log(`Snake color: ${color}`);
       for (const segment of snake.body) {
+        console.log("Segment:", segment);
         drawCell(segment, color, snake.mySnake);
       }
     }
@@ -299,11 +301,14 @@
       // Use XPos/YPos from server if available (fallback to 0)
       const initX = typeof data.XPos === "number" ? data.XPos : 0;
       const initY = typeof data.YPos === "number" ? data.YPos : 0;
+
       state.snakes[myPlayerId] = {
         body: [{ x: initX, y: initY }],
         color: data.snakeColor || SNAKE_COLOR,
         mySnake: true,
       };
+
+      //console.log("Segment:", state.snakes[myPlayerId].body);
 
       // Render immediately so the player sees their snake in the lobby
       render();
@@ -314,13 +319,15 @@
         return Math.max(min, Math.min(max, v));
       }
       for (const p of data.players) {
-        const x = clamp(p.x, 0, WORLD_COLS - 1);
-        const y = clamp(p.y, 0, WORLD_ROWS - 1);
+        const body = p.body.map((seg) => ({
+          x: Number(seg.x),
+          y: Number(seg.y),
+        }));
         const isMySnake = myPlayerId == p.playerId;
 
         if (isMySnake) {
           const mySnake = state.snakes[myPlayerId];
-          mySnake.body = [{ x, y }];
+          mySnake.body = body;
           mySnake.color = p.snakeColor;
           mySnake.mySnake = true;
 
@@ -335,7 +342,7 @@
           state.snakes[myPlayerId] = mySnake;
         } else {
           state.snakes[p.playerId] = {
-            body: [{ x, y }],
+            body: body,
             color: p.snakeColor,
             mySnake: false,
           };
