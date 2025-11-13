@@ -8,9 +8,8 @@
   const canvas = document.getElementById("gameCanvas");
   const ctx = canvas.getContext("2d");
 
-  const GRID_SIZE = 20; // width/height of one grid cell in pixels
-  const BOARD_COLS = Math.floor(canvas.width / GRID_SIZE);
-  const BOARD_ROWS = Math.floor(canvas.height / GRID_SIZE);
+  const WORLD_COLS = 178 / 2;
+  const WORLD_ROWS = 100 / 2;
 
   const SNAKE_COLOR = "#1976d2"; // blue (fallback)
   const APPLE_COLOR = "#d32f2f"; // red
@@ -19,6 +18,33 @@
   const startBtn = document.getElementById("startBtn");
   const resetBtn = document.getElementById("resetBtn");
   const scoreValueEl = document.getElementById("scoreValue");
+  let scaleX = 1;
+  let scaleY = 1;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    console.log("Canvas resized");
+
+    // Use a single scale factor to keep cells square
+    const scale = Math.min(
+      canvas.width / WORLD_COLS,
+      canvas.height / WORLD_ROWS
+    );
+
+    // Save scale for rendering
+    scaleX = scale;
+    scaleY = scale;
+
+    // Center the game board
+    offsetX = (canvas.width - WORLD_COLS * scale) / 2;
+    offsetY = (canvas.height - WORLD_ROWS * scale) / 2;
+
+    clearBoard();
+    render();
+  }
 
   // -----------------------------
   // Game State
@@ -32,7 +58,7 @@
     snakes: {},
     direction: { x: 1, y: 0 },
     nextDirection: { x: 1, y: 0 },
-    apple: spawnApple([{ x: 5, y: 5 }]), // pass initial snake
+    apple: { x: null, y: null },
     growPending: 0,
     tickMs: 120,
     score: 0,
@@ -69,8 +95,8 @@
     let pos;
     do {
       pos = {
-        x: randomInt(0, BOARD_COLS - 1),
-        y: randomInt(0, BOARD_ROWS - 1),
+        x: randomInt(0, WORLD_COLS - 1),
+        y: randomInt(0, WORLD_ROWS - 1),
       };
     } while (snake.some((seg) => positionsEqual(seg, pos)));
     return pos;
@@ -130,7 +156,7 @@
     state.snakes = {};
     state.direction = { x: 1, y: 0 };
     state.nextDirection = { x: 1, y: 0 };
-    state.apple = { x: 0, y: 0 };
+    state.apple = { x: null, y: null };
     state.growPending = 0;
     state.score = 0;
     // Don't reset snakeColor - keep it from server
@@ -152,19 +178,18 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  function drawCell(pos, color, isMySnake) {
-    const x = pos.x * GRID_SIZE;
-    const y = pos.y * GRID_SIZE;
-
-    // Draw the main snake body
+  function drawCell(pos, color, isMySnake = false) {
+    const x = offsetX + pos.x * scaleX;
+    const y = offsetY + pos.y * scaleY;
+    // Draw the main snake bodymy
     ctx.fillStyle = color;
-    ctx.fillRect(x, y, GRID_SIZE, GRID_SIZE);
+    ctx.fillRect(x, y, scaleX, scaleY);
 
     if (isMySnake) {
       // Draw a black border around your snake
       ctx.lineWidth = 2;
       ctx.strokeStyle = "black";
-      ctx.strokeRect(x, y, GRID_SIZE, GRID_SIZE);
+      ctx.strokeRect(x, y, scaleX, scaleY);
 
       // Optional: add a shadow glow effect
       ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
@@ -188,7 +213,9 @@
   }
 
   function drawApple() {
-    drawCell(state.apple, APPLE_COLOR);
+    if (state.apple.x != null && state.apple.y != null) {
+      drawCell(state.apple, APPLE_COLOR);
+    }
   }
 
   function drawLoseText() {
@@ -202,7 +229,7 @@
 
   function render() {
     clearBoard();
-    //drawApple();
+    drawApple();
     drawSnakes();
   }
 
@@ -221,6 +248,7 @@
   resetBtn.addEventListener("click", () => {
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "reset", room: gameId }));
+      resetGame();
     } else {
       console.warn("⚠️ WebSocket not open, retrying in 500ms...");
       setTimeout(() => {
@@ -239,6 +267,8 @@
   resetGame();
   clearBoard();
   render();
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas(); // call once on startup
 
   // connect with websocket
   const gameId = sessionStorage.getItem("gameId") || "1";
@@ -269,6 +299,7 @@
       // Use XPos/YPos from server if available (fallback to 0)
       const initX = typeof data.XPos === "number" ? data.XPos : 0;
       const initY = typeof data.YPos === "number" ? data.YPos : 0;
+
       state.snakes[myPlayerId] = {
         body: [{ x: initX, y: initY }],
         color: data.snakeColor || SNAKE_COLOR,
@@ -284,13 +315,15 @@
         return Math.max(min, Math.min(max, v));
       }
       for (const p of data.players) {
-        const x = clamp(p.x, 0, BOARD_COLS - 1);
-        const y = clamp(p.y, 0, BOARD_ROWS - 1);
+        const body = p.body.map((seg) => ({
+          x: Number(seg.x),
+          y: Number(seg.y),
+        }));
         const isMySnake = myPlayerId == p.playerId;
 
         if (isMySnake) {
           const mySnake = state.snakes[myPlayerId];
-          mySnake.body = [{ x, y }];
+          mySnake.body = body;
           mySnake.color = p.snakeColor;
           mySnake.mySnake = true;
 
@@ -305,7 +338,7 @@
           state.snakes[myPlayerId] = mySnake;
         } else {
           state.snakes[p.playerId] = {
-            body: [{ x, y }],
+            body: body,
             color: p.snakeColor,
             mySnake: false,
           };
@@ -323,8 +356,8 @@
       }
 
       for (const p of data.players) {
-        const x = clamp(p.x, 0, BOARD_COLS - 1);
-        const y = clamp(p.y, 0, BOARD_ROWS - 1);
+        const x = clamp(p.x, 0, WORLD_COLS - 1);
+        const y = clamp(p.y, 0, WORLD_ROWS - 1);
         const isMySnake = myPlayerId == p.playerId;
         state.snakes[p.playerId] = {
           body: [{ x, y }],
@@ -338,6 +371,9 @@
     if (data.type == "game_starting") {
       // set the snake states locally.
       serverTick = data.tickCount;
+      console.log(data.apple);
+      state.apple.x = data.apple.X;
+      state.apple.y = data.apple.Y;
       if (serverTick === 0) {
         for (const p of data.players) {
           const x = p.x;
@@ -363,6 +399,23 @@
       console.log("Ending game...");
       startBtn.style.display = "none";
       resetBtn.style.display = "inline-block";
+    }
+
+    if (data.type == "update_score") {
+      state.score = data.newScore;
+      state.apple.x = data.apple.X;
+      state.apple.y = data.apple.Y;
+      if (data.playerId == myPlayerId) {
+        updateScoreUI();
+      }
+      render();
+    }
+
+    if (data.type == "game_resetted") {
+      state.score = 0;
+      state.apple = { x: null, y: null };
+      updateScoreUI();
+      render();
     }
   };
 
