@@ -206,9 +206,7 @@
   function drawSnakes() {
     for (const [id, snake] of Object.entries(state.snakes)) {
       const color = snake.color || SNAKE_COLOR;
-      console.log(`Snake color: ${color}`);
       for (const segment of snake.body) {
-        console.log("Segment:", segment);
         drawCell(segment, color, snake.mySnake);
       }
     }
@@ -307,8 +305,6 @@
         color: data.snakeColor || SNAKE_COLOR,
         mySnake: true,
       };
-
-      //console.log("Segment:", state.snakes[myPlayerId].body);
 
       // Render immediately so the player sees their snake in the lobby
       render();
