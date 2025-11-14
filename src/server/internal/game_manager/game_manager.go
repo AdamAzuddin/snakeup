@@ -100,41 +100,42 @@ func (gm *GameManager) RunGame(g *game.Game) {
 
 			g.UpdatePlayersPositions()
 			winner, loser, isDraw := g.ContainSnakesCollision()
-			if winner != nil && loser != nil {
-				fmt.Println("Collision detected")
-				if !isDraw {
-					if winner != loser {
-						winner.Score++
-					}
+			if winner != nil || loser != nil || isDraw {
+				if isDraw {
+					fmt.Println("Collision detected: draw")
+					g.State = game.End
+				} else if winner.Id != loser.Id {
+					winner.Score++
 					loser.Score = 0
+					g.State = game.End
 				}
+
+				// broadcast game over
 				tickMsg := map[string]interface{}{
 					"type":   "game_over",
 					"gameId": g.Id,
 				}
 				data, _ := json.Marshal(tickMsg)
-				g.State = game.End
 				g.Broadcast <- data
 				g.Updates <- game.End
 			}
 
-			hasAppleCollision, playerCollidedWithApple := g.ContainAppleCollision()
-
-			if hasAppleCollision {
-				playerCollidedWithApple.Score++
-				playerCollidedWithApple.Snake.Grow(1)
+			// 2️⃣ Always check apple collision
+			if hasAppleCollision, player := g.ContainAppleCollision(); hasAppleCollision {
+				player.Score++
+				player.Snake.Grow(1)
 				g.Apple = g.GetRandomPosition()
 				tickMsg := map[string]interface{}{
 					"type":     "update_score",
-					"playerId": playerCollidedWithApple.Id,
-					"newScore": playerCollidedWithApple.Score,
+					"playerId": player.Id,
+					"newScore": player.Score,
 					"apple":    g.Apple,
 					"gameId":   g.Id,
 				}
-
 				data, _ := json.Marshal(tickMsg)
 				g.Broadcast <- data
 			}
+
 		case state := <-g.Updates:
 			switch state {
 			case game.Init:

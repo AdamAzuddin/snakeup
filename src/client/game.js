@@ -71,13 +71,6 @@
   // -----------------------------
   // Utilities
   // -----------------------------
-  function randomInt(minInclusive, maxInclusive) {
-    return (
-      Math.floor(Math.random() * (maxInclusive - minInclusive + 1)) +
-      minInclusive
-    );
-  }
-
   function applyInput(snake, dir) {
     if ((!snake | !dir | snake.body, length == 0)) return;
 
@@ -89,17 +82,6 @@
 
   function positionsEqual(a, b) {
     return a.x === b.x && a.y === b.y;
-  }
-
-  function spawnApple(snake) {
-    let pos;
-    do {
-      pos = {
-        x: randomInt(0, WORLD_COLS - 1),
-        y: randomInt(0, WORLD_ROWS - 1),
-      };
-    } while (snake.some((seg) => positionsEqual(seg, pos)));
-    return pos;
   }
 
   // -----------------------------
@@ -311,9 +293,6 @@
     }
 
     if (data.type === "players_update") {
-      function clamp(v, min, max) {
-        return Math.max(min, Math.min(max, v));
-      }
       for (const p of data.players) {
         const body = p.body.map((seg) => ({
           x: Number(seg.x),
@@ -336,6 +315,7 @@
             applyInput(mySnake, inp.dir);
           }
           state.snakes[myPlayerId] = mySnake;
+          console.log("My snake body: "+mySnake.body[0].y)
         } else {
           state.snakes[p.playerId] = {
             body: body,

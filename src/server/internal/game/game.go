@@ -138,47 +138,73 @@ func (g *Game) AddPlayer(p *player.Player) {
 // Returns the player whose body was collided into (winner) and
 // the player whose head collided (loser), or nil, nil if no collision.
 func (g *Game) ContainSnakesCollision() (winner *player.Player, loser *player.Player, isDraw bool) {
-    // Map to track all body positions (excluding heads)
-    bodyPositions := make(map[string]*player.Player)
-    headPositions := make(map[string]*player.Player)
+	// Track previous and current head positions
+	prevHead := make(map[*player.Player]player.Position)
+	currHead := make(map[*player.Player]player.Position)
 
-    for _, p := range g.Players {
-        // Track head positions separately
-        head := p.Snake.Body.Front().Value.(player.Position)
-        headKey := fmt.Sprintf("%v,%v", head.X, head.Y)
-        headPositions[headKey] = p
+	// Also track body positions (excluding heads)
+	bodyPositions := make(map[string]*player.Player)
 
-        // Skip head, store body positions
-        e := p.Snake.Body.Front().Next()
-        for ; e != nil; e = e.Next() {
-            pos := e.Value.(player.Position)
-            key := fmt.Sprintf("%v,%v", pos.X, pos.Y)
-            bodyPositions[key] = p
-        }
-    }
+	// --- STEP 1: scan body and store prev heads ---
+	for _, p := range g.Players {
+		head := p.Snake.Body.Front().Value.(player.Position)
+		prevHead[p] = head
 
-    // Check head collisions
-    for _, p := range g.Players {
-        head := p.Snake.Body.Front().Value.(player.Position)
-        key := fmt.Sprintf("%v,%v", head.X, head.Y)
+		// store body (skip head)
+		e := p.Snake.Body.Front().Next()
+		for ; e != nil; e = e.Next() {
+			pos := e.Value.(player.Position)
+			key := fmt.Sprintf("%v,%v", pos.X, pos.Y)
+			bodyPositions[key] = p
+		}
+	}
 
-        // Check head-to-body collision
-        if hitPlayer, exists := bodyPositions[key]; exists {
-            fmt.Println("Collision detected! Head of player", p.Id, "hit body of player", hitPlayer.Id)
-            return hitPlayer, p, false
-        }
+	// --- STEP 2: after movement, get new head positions ---
+	for _, p := range g.Players {
+		head := p.Snake.Body.Front().Value.(player.Position)
+		currHead[p] = head
+	}
 
-        // Check head-to-head collision
-        if otherPlayer, exists := headPositions[key]; exists && otherPlayer.Id != p.Id {
-            fmt.Println("Collision detected! Head of player", p.Id, "hit head of player", otherPlayer.Id)
-            return otherPlayer, p, true // arbitrarily treat otherPlayer as winner
-        }
-    }
+	// --- STEP 3: detect head-head swap ---
+	for pA, prevA := range prevHead {
+		currA := currHead[pA]
+		for pB, prevB := range prevHead {
+			if pA == pB {
+				continue
+			}
 
-    return nil, nil, false // no collision
+			currB := currHead[pB]
+
+			// Did they swap heads?
+			if currA == prevB && currB == prevA {
+				fmt.Println("Head-swap detected between:", pA.Id, "and", pB.Id)
+				return nil, nil, true // DRAW
+			}
+		}
+	}
+
+	// --- STEP 4: detect head-to-body & head-to-head ---
+	for _, p := range g.Players {
+		head := currHead[p]
+		key := fmt.Sprintf("%v,%v", head.X, head.Y)
+
+		// head-to-body
+		if hitPlayer, exists := bodyPositions[key]; exists {
+			fmt.Println("Collision! Head of", p.Id, "hit body of", hitPlayer.Id)
+			return hitPlayer, p, false
+		}
+
+		// head-to-head (same tile at same time)
+		for other, otherHead := range currHead {
+			if other != p && otherHead == head {
+				fmt.Println("Head-to-head:", p.Id, "and", other.Id)
+				return nil, nil, true // DRAW
+			}
+		}
+	}
+
+	return nil, nil, false // no collision
 }
-
-
 
 func (g *Game) ContainAppleCollision() (bool, *player.Player) {
 	for _, p := range g.Players {
