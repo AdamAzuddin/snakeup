@@ -194,6 +194,14 @@ func (gm *GameManager) IsGameRoomAlreadyFull(gameId string) bool {
 	return len(g.Players) >= MAX_NO_PLAYERS_IN_A_ROOM
 }
 
+func (gm *GameManager) IsGameInit(gameId string) bool {
+	g := gm.GetGameWithId(gameId)
+	if g == nil {
+		return true
+	}
+	return g.State == game.Init
+}
+
 func (gm *GameManager) runBroadcaster(g *game.Game) {
 	for {
 		select {
@@ -250,8 +258,8 @@ func (gm *GameManager) HandleRoomCapacity(w http.ResponseWriter, r *http.Request
 	vars := mux.Vars(r)
 	gameId := vars["gameId"]
 
-	if gm.IsGameRoomAlreadyFull(gameId) {
-		http.Error(w, "Room is full", http.StatusForbidden)
+	if gm.IsGameRoomAlreadyFull(gameId) || !gm.IsGameInit(gameId) {
+		http.Error(w, "Room cannot accept more players", http.StatusForbidden)
 		return
 	}
 
