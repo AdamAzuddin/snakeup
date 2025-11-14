@@ -315,7 +315,6 @@
             applyInput(mySnake, inp.dir);
           }
           state.snakes[myPlayerId] = mySnake;
-          console.log("My snake body: "+mySnake.body[0].y)
         } else {
           state.snakes[p.playerId] = {
             body: body,
