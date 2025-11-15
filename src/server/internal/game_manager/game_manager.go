@@ -16,22 +16,19 @@ import (
 
 const MAX_NO_PLAYERS_IN_A_ROOM = 4
 
-var idCounter int64
-var idMutex sync.Mutex
-
-func generatePlayerId() int64 {
-	idMutex.Lock()
-	defer idMutex.Unlock()
-	idCounter++
-	return idCounter
-}
-
 type GameManager struct {
-	games []*game.Game
+	Games map[string]*game.Game
 	mu    sync.Mutex
 }
 
+func (gm *GameManager) RemoveGame(gameId string) {
+	gm.mu.Lock()
+	defer gm.mu.Unlock()
+	delete(gm.Games, gameId)
+}
+
 func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
+	log.Printf("CreateNewGame called for id %s", gameId)
 	// spawn a new go routine
 	newGame := game.Game{
 		Id:            gameId,
@@ -44,9 +41,11 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 		StopBroadcast: make(chan bool),
 		Broadcast:     make(chan []byte, 100),
 		Quit:          make(chan struct{}),
+		IdCounter: 0,
+		SnakeColorCount: 0,
 	}
 	gm.mu.Lock()
-	gm.games = append(gm.games, &newGame)
+	gm.Games[gameId] = &newGame
 	gm.mu.Unlock()
 
 	go gm.runBroadcaster(&newGame)
@@ -89,7 +88,12 @@ func (gm *GameManager) RunGame(g *game.Game) {
 	for {
 		tickCount++
 		select {
-		case input := <-g.Input:
+		case <-g.Quit:
+			return
+		case input, ok := <-g.Input:
+			if !ok {
+				continue
+			}
 			log.Printf("Game %s received input from player %v: %v\n", g.Id, input.PlayerId, input.Movement)
 			gm.processPlayerInput(g, &input)
 
@@ -136,7 +140,10 @@ func (gm *GameManager) RunGame(g *game.Game) {
 				g.Broadcast <- data
 			}
 
-		case state := <-g.Updates:
+		case state, ok := <-g.Updates:
+			if !ok {
+				return
+			}
 			switch state {
 			case game.Init:
 				fmt.Println("🔄 Game reset detected, resuming loop")
@@ -176,15 +183,13 @@ func (gm *GameManager) processPlayerInput(g *game.Game, input *player.PlayerInpu
 }
 
 func (gm *GameManager) IsGameIdAlreadyExist(gameId string) bool {
-	gm.mu.Lock()
-	defer gm.mu.Unlock()
-	for _, game := range gm.games {
-		if game.Id == gameId {
-			return true
-		}
-	}
-	return false
+    gm.mu.Lock()
+    defer gm.mu.Unlock()
+
+    _, exists := gm.Games[gameId]
+    return exists
 }
+
 
 func (gm *GameManager) IsGameRoomAlreadyFull(gameId string) bool {
 	g := gm.GetGameWithId(gameId)
@@ -218,18 +223,19 @@ func (gm *GameManager) runBroadcaster(g *game.Game) {
 		case <-g.StopBroadcast:
 			log.Printf("Stopping broadcaster for game %s", g.Id)
 			return
+		case <-g.Quit:
+			return
 		}
 	}
 }
 
 func (gm *GameManager) GetGameWithId(gameId string) *game.Game {
-	for _, g := range gm.games {
-		if g.Id == gameId {
-			return g
-		}
-	}
-	return nil
+    gm.mu.Lock()
+    defer gm.mu.Unlock()
+
+    return gm.Games[gameId]
 }
+
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -257,14 +263,12 @@ func (gm *GameManager) HandleRoomCapacity(w http.ResponseWriter, r *http.Request
 
 	vars := mux.Vars(r)
 	gameId := vars["gameId"]
+	
+	log.Printf("HandleRoomCapacity called for %s (method=%s)", gameId, r.Method)
 
 	if gm.IsGameRoomAlreadyFull(gameId) || !gm.IsGameInit(gameId) {
 		http.Error(w, "Room cannot accept more players", http.StatusForbidden)
 		return
-	}
-
-	if !gm.IsGameIdAlreadyExist(gameId) {
-		gm.CreateNewGame(gameId)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -282,23 +286,7 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p := &player.Player{
-		Id:     uint64(generatePlayerId()),
-		GameId: gameId,
-		Conn:   conn,
-		Send:   make(chan []byte, 50),
-	}
-
-	go func(pl *player.Player) {
-		for msg := range pl.Send {
-			if err := pl.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-				log.Printf("❌ Failed to write to player %d: %v", p.Id, err)
-				return
-			}
-		}
-	}(p)
-
-	defer p.Conn.Close()
+	
 
 	var currentGame *game.Game
 
@@ -315,6 +303,24 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	p := &player.Player{
+		Id:     uint64(currentGame.GeneratePlayerId()),
+		GameId: gameId,
+		Conn:   conn,
+		Send:   make(chan []byte, 50),
+	}
+
+	go func(pl *player.Player) {
+		for msg := range pl.Send {
+			if err := pl.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				log.Printf("❌ Failed to write to player %d: %v", p.Id, err)
+				return
+			}
+		}
+	}(p)
+
+	defer p.Conn.Close()
 	currentGame.AddPlayer(p)
 	headPos := p.Snake.Body.Front().Value.(player.Position) // type assertion
 
@@ -344,8 +350,41 @@ func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
 		var msg map[string]interface{}
 		if err := p.Conn.ReadJSON(&msg); err != nil {
 			log.Printf("Player %d disconnected from game %s: %v", p.Id, g.Id, err)
-			// TODO: Remove player from game
-			close(p.Send)
+			var disconnectedPlayer []map[string]interface{}
+
+			for _, pl := range g.Players {
+				if pl.Id == p.Id {
+					// Convert snake body (linked list) into slice of positions
+					var bodyPositions []map[string]int
+					for e := pl.Snake.Body.Front(); e != nil; e = e.Next() {
+						pos := e.Value.(player.Position)
+						bodyPositions = append(bodyPositions, map[string]int{
+							"x": pos.X,
+							"y": pos.Y,
+						})
+					}
+					disconnectedPlayer = append(disconnectedPlayer, map[string]interface{}{
+						"playerId":   pl.Id,
+						"snakeColor": pl.SnakeColor.String(),
+						"body":       bodyPositions,
+						"length":     pl.Snake.Body.Len(),
+					})
+				}
+
+			}
+			msg := map[string]interface{}{
+				"type":               "player_disconnected",
+				"gameId":             g.Id,
+				"disconnectedPlayer": disconnectedPlayer,
+			}
+
+			data, _ := json.Marshal(msg)
+			g.Broadcast <- data
+			g.RemovePlayer(p)
+			if len(g.Players) <= 0 {
+				gm.RemoveGame(g.Id)
+				fmt.Printf("Game with id %v is removed\n", g.Id)
+			}
 			break
 		}
 

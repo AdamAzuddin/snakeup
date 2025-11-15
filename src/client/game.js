@@ -327,6 +327,26 @@
       render();
     }
 
+    if (data.type === "player_disconnected") {
+      for (const p of data.disconnectedPlayer) {
+        const id = p.playerId;
+
+        // If it's me, then handle separately (optional)
+        if (id === myPlayerId) {
+          console.warn("You have been disconnected from the game.");
+          // redirect or show modal
+          continue;
+        }
+
+        // Remove the player from the local snake state
+        if (state.snakes[id]) {
+          delete state.snakes[id];
+        }
+
+        console.log("Removed disconnected player:", id);
+      }
+    }
+
     if (data.type === "reset_game") {
       startBtn.style.display = "inline-block";
       resetBtn.style.display = "none";

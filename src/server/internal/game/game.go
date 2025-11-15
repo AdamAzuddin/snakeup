@@ -29,6 +29,10 @@ type Game struct {
 	StopBroadcast chan bool
 	Broadcast     chan []byte
 	Quit          chan struct{}
+	idMutex sync.Mutex
+	IdCounter int64
+	colorMux sync.Mutex
+	SnakeColorCount int
 }
 
 var startingOffsets = []struct{ xOffset, yOffset int }{
@@ -38,8 +42,24 @@ var startingOffsets = []struct{ xOffset, yOffset int }{
 	{-1, 0},
 }
 
-var colorMux sync.Mutex
-var snakeColorCount int
+func (g *Game)GeneratePlayerId() int64 {
+	g.idMutex.Lock()
+	defer g.idMutex.Unlock()
+	g.IdCounter++
+	return g.IdCounter
+}
+
+
+func (g *Game) Shutdown() {
+	g.Players = nil
+    select {
+    case <-g.Quit:
+        // already closed / signalled
+    default:
+        close(g.Quit)
+    }
+
+}
 
 func (g *Game) GetRandomPosition() player.Position {
 	for {
@@ -74,13 +94,11 @@ func (g *Game) GetRandomPosition() player.Position {
 	}
 }
 
-func getColor() player.SnakeColor {
-	colorMux.Lock()
-	defer colorMux.Unlock()
-
-	// Assign color based on count, cycling through the available ones
-	color := player.SnakeColor(snakeColorCount % 4)
-	snakeColorCount++
+func (g *Game)getColor() player.SnakeColor {
+	g.colorMux.Lock()
+	defer g.colorMux.Unlock()
+	color := player.SnakeColor(g.SnakeColorCount % 4)
+	g.SnakeColorCount++
 	return color
 }
 
@@ -119,7 +137,7 @@ func (g *Game) BroadcastPlayersData() {
 
 func (g *Game) AddPlayer(p *player.Player) {
 	fmt.Printf("Adding player with id: %v \n", p.Id)
-	p.SnakeColor = player.SnakeColor(getColor())
+	p.SnakeColor = player.SnakeColor(g.getColor())
 	fmt.Printf("Adding player with color id: %v\n", p.SnakeColor)
 	if len(g.Players) < 4 {
 		pos := g.GetRandomPosition()
@@ -134,6 +152,19 @@ func (g *Game) AddPlayer(p *player.Player) {
 	// Build a "players_update" message with the full list
 	g.BroadcastPlayersData()
 }
+
+func (g *Game) RemovePlayer(p *player.Player) {
+    fmt.Printf("Removing player with id: %v \n", p.Id)
+    for i, pl := range g.Players {
+        if pl.Id == p.Id {
+            g.Players = append(g.Players[:i], g.Players[i+1:]...)
+            break
+        }
+    }
+    g.BroadcastPlayersData()
+}
+
+
 
 // Returns the player whose body was collided into (winner) and
 // the player whose head collided (loser), or nil, nil if no collision.
@@ -253,8 +284,4 @@ func (g *Game) ResetGame() {
 	data, _ := json.Marshal(msg)
 	g.Broadcast <- data
 	fmt.Printf("Reset message sent")
-}
-
-func (*Game) RemovePlayer() error {
-	return nil
 }
