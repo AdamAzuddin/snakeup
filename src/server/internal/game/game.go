@@ -19,7 +19,7 @@ const (
 
 type Game struct {
 	Id            string
-	Players       []*player.Player
+	Players       map[uint64]*player.Player
 	Apple         player.Position
 	State         GameState
 	Width         int
@@ -147,7 +147,7 @@ func (g *Game) AddPlayer(p *player.Player) {
 		p.Snake = player.NewSnake(20, 20, player.Direction{X: 1, Y: 0})
 	}
 
-	g.Players = append(g.Players, p)
+	g.Players[p.Id] = p
 
 	// Build a "players_update" message with the full list
 	g.BroadcastPlayersData()
@@ -155,12 +155,7 @@ func (g *Game) AddPlayer(p *player.Player) {
 
 func (g *Game) RemovePlayer(p *player.Player) {
     fmt.Printf("Removing player with id: %v \n", p.Id)
-    for i, pl := range g.Players {
-        if pl.Id == p.Id {
-            g.Players = append(g.Players[:i], g.Players[i+1:]...)
-            break
-        }
-    }
+    delete(g.Players, p.Id)
     g.BroadcastPlayersData()
 }
 
