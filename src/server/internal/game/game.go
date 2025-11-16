@@ -176,13 +176,22 @@ func (g *Game) RemovePlayer(p *player.Player) {
 		}
 
 	}
+
 	msg := map[string]interface{}{
+		"type":               "player_died",
+		"gameId":             g.Id,
+		"playerId": p.Id,
+	}
+	data, _ := json.Marshal(msg)
+	p.Send <- data
+
+	msg = map[string]interface{}{
 		"type":               "remove_player",
 		"gameId":             g.Id,
 		"playerToRemove": playerToRemove,
 	}
 
-	data, _ := json.Marshal(msg)
+	data, _ = json.Marshal(msg)
 	g.Broadcast <- data
 	delete(g.Players, p.Id)
 	g.BroadcastPlayersData()

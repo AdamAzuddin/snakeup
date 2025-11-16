@@ -327,14 +327,21 @@
       render();
     }
 
+    if (data.type == "player_died" && data.playerId == myPlayerId) {
+      state.snakes = {};
+      state.apple = {};
+      clearBoard();
+      render();
+    }
+
     if (data.type === "remove_player") {
       for (const p of data.playerToRemove) {
         const id = p.playerId;
 
         // If it's me, then handle separately (optional)
         if (id === myPlayerId) {
-          console.warn("You have been removed from the game.");
-          // redirect or show modal
+          console.log("You have been removed from the game.");
+          clearBoard();
           continue;
         }
 
