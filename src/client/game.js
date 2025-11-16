@@ -71,13 +71,6 @@
   // -----------------------------
   // Utilities
   // -----------------------------
-  function randomInt(minInclusive, maxInclusive) {
-    return (
-      Math.floor(Math.random() * (maxInclusive - minInclusive + 1)) +
-      minInclusive
-    );
-  }
-
   function applyInput(snake, dir) {
     if ((!snake | !dir | snake.body, length == 0)) return;
 
@@ -85,21 +78,6 @@
     const newHead = { x: head.x + dir.x, y: head.y + dir.y };
     snake.body.shift(newHead);
     snake.body.pop();
-  }
-
-  function positionsEqual(a, b) {
-    return a.x === b.x && a.y === b.y;
-  }
-
-  function spawnApple(snake) {
-    let pos;
-    do {
-      pos = {
-        x: randomInt(0, WORLD_COLS - 1),
-        y: randomInt(0, WORLD_ROWS - 1),
-      };
-    } while (snake.some((seg) => positionsEqual(seg, pos)));
-    return pos;
   }
 
   // -----------------------------
@@ -143,10 +121,11 @@
       yOffset: keyToDirection[event.key].y,
       inputSeq: inputSeq,
     };
-
-    socket.send(JSON.stringify(data));
-    console.log(data);
-    if (!newDir) return;
+    if (state.socket != null) {
+      state.socket.send(JSON.stringify(data));
+      console.log(data);
+      if (!newDir) return;
+    }
   }
 
   // -----------------------------
@@ -168,7 +147,9 @@
     startBtn.style.display = "none";
     resetBtn.style.display = "none";
     document.addEventListener("keydown", handleKeydown);
-    socket.send(JSON.stringify({ type: "start", room: gameId }));
+    if (state.socket != null) {
+      state.socket.send(JSON.stringify({ type: "start", room: gameId }));
+    }
   }
 
   // -----------------------------
@@ -218,15 +199,6 @@
     }
   }
 
-  function drawLoseText() {
-    ctx.fillStyle = TEXT_COLOR;
-    ctx.font =
-      "bold 32px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("You lose!", canvas.width / 2, canvas.height / 2);
-  }
-
   function render() {
     clearBoard();
     drawApple();
@@ -246,14 +218,14 @@
   });
 
   resetBtn.addEventListener("click", () => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "reset", room: gameId }));
+    if (state.socket != null && state.socket.readyState === WebSocket.OPEN) {
+      state.socket.send(JSON.stringify({ type: "reset", room: gameId }));
       resetGame();
     } else {
       console.warn("⚠️ WebSocket not open, retrying in 500ms...");
       setTimeout(() => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: "reset", room: gameId }));
+        if (state.socket.readyState === WebSocket.OPEN) {
+          state.socket.send(JSON.stringify({ type: "reset", room: gameId }));
         } else {
           console.error(
             "❌ Failed to send reset message — socket still closed"
@@ -263,6 +235,10 @@
     }
   });
 
+  document.getElementById("homeBtn").addEventListener("click", () => {
+    window.location.href = "index.html";
+  });
+
   // Initial render with start screen (not running)
   resetGame();
   clearBoard();
@@ -270,114 +246,135 @@
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas(); // call once on startup
 
-  // connect with websocket
   const gameId = sessionStorage.getItem("gameId") || "1";
   if (!gameId.trim()) {
     alert("Please enter a game ID");
     return;
   }
 
-  // start a websocket connection
-  const socket = new WebSocket(`ws://localhost:42069/game/${gameId}`);
-
-  socket.onopen = () => {
-    console.log(`✅ Connected to WebSocket server at /game/${gameId}`);
-    // You can send an initial message if needed
-    socket.send(JSON.stringify({ type: "join", room: gameId }));
-  };
-
-  socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-
-    if (data.type == "player_init") {
-      myPlayerId = data.playerId;
-      console.log(
-        `My id: ${myPlayerId}, Snake color: ${data.snakeColor}, Position: {${data.XPos}, ${data.YPos}}\n`
-      );
-
-      // Ensure there's an entry for my player in state.snakes (pre-lobby preview)
-      // Use XPos/YPos from server if available (fallback to 0)
-      const initX = typeof data.XPos === "number" ? data.XPos : 0;
-      const initY = typeof data.YPos === "number" ? data.YPos : 0;
-
-      state.snakes[myPlayerId] = {
-        body: [{ x: initX, y: initY }],
-        color: data.snakeColor || SNAKE_COLOR,
-        mySnake: true,
-      };
-
-      // Render immediately so the player sees their snake in the lobby
-      render();
-    }
-
-    if (data.type === "players_update") {
-      function clamp(v, min, max) {
-        return Math.max(min, Math.min(max, v));
+  fetch(`http://localhost:42069/check-game/${gameId}`)
+    .then((res) => {
+      if (!res.ok) {
+        window.location.href = "index.html";
+        return Promise.reject("Game not valid");
       }
-      for (const p of data.players) {
-        const body = p.body.map((seg) => ({
-          x: Number(seg.x),
-          y: Number(seg.y),
-        }));
-        const isMySnake = myPlayerId == p.playerId;
+      const socket = new WebSocket(`ws://localhost:42069/game/${gameId}`);
+      state.socket = socket;
+      setupSocket(socket);
+    })
+    .catch((err) => console.error(err));
 
-        if (isMySnake) {
-          const mySnake = state.snakes[myPlayerId];
-          mySnake.body = body;
-          mySnake.color = p.snakeColor;
-          mySnake.mySnake = true;
+  function setupSocket(socket) {
+    socket.onopen = () => {
+      console.log(`✅ Connected to WebSocket server at /game/${gameId}`);
+      // You can send an initial message if needed
+      socket.send(JSON.stringify({ type: "join", room: gameId }));
+    };
 
-          const lastProcessedInputSeq = p.lastProcessedInputSeq ?? 0;
-          pendingInputs = pendingInputs.filter(
-            (inp) => inp.seq > lastProcessedInputSeq
-          );
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
 
-          for (const inp of pendingInputs) {
-            applyInput(mySnake, inp.dir);
+      if (data.type == "player_init") {
+        myPlayerId = data.playerId;
+        console.log(
+          `My id: ${myPlayerId}, Snake color: ${data.snakeColor}, Position: {${data.XPos}, ${data.YPos}}\n`
+        );
+
+        // Ensure there's an entry for my player in state.snakes (pre-lobby preview)
+        // Use XPos/YPos from server if available (fallback to 0)
+        const initX = typeof data.XPos === "number" ? data.XPos : 0;
+        const initY = typeof data.YPos === "number" ? data.YPos : 0;
+
+        state.snakes[myPlayerId] = {
+          body: [{ x: initX, y: initY }],
+          color: data.snakeColor || SNAKE_COLOR,
+          mySnake: true,
+        };
+
+        // Render immediately so the player sees their snake in the lobby
+        render();
+      }
+
+      if (data.type === "players_update") {
+        for (const p of data.players) {
+          const body = p.body.map((seg) => ({
+            x: Number(seg.x),
+            y: Number(seg.y),
+          }));
+          const isMySnake = myPlayerId == p.playerId;
+
+          if (isMySnake) {
+            const mySnake = state.snakes[myPlayerId];
+            mySnake.body = body;
+            mySnake.color = p.snakeColor;
+            mySnake.mySnake = true;
+
+            const lastProcessedInputSeq = p.lastProcessedInputSeq ?? 0;
+            pendingInputs = pendingInputs.filter(
+              (inp) => inp.seq > lastProcessedInputSeq
+            );
+
+            for (const inp of pendingInputs) {
+              applyInput(mySnake, inp.dir);
+            }
+            state.snakes[myPlayerId] = mySnake;
+          } else {
+            state.snakes[p.playerId] = {
+              body: body,
+              color: p.snakeColor,
+              mySnake: false,
+            };
           }
-          state.snakes[myPlayerId] = mySnake;
-        } else {
-          state.snakes[p.playerId] = {
-            body: body,
-            color: p.snakeColor,
-            mySnake: false,
-          };
+        }
+
+        render();
+      }
+
+      if (data.type == "player_died" && data.playerId == myPlayerId) {
+        state.snakes = {};
+        state.apple = {};
+        clearBoard();
+        // Grab elements
+        const endScreen = document.getElementById("endScreen");
+        const endMessage = document.getElementById("endMessage");
+
+        if (endScreen && endMessage) {
+          endScreen.style.display = "inline-block";
+          endMessage.textContent = "You lose!";
+        }
+        render();
+      }
+
+      if (data.type === "remove_player") {
+        for (const p of data.playerToRemove) {
+          const id = p.playerId;
+
+          // If it's me, then handle separately (optional)
+          if (id === myPlayerId) {
+            console.log("You have been removed from the game.");
+            clearBoard();
+            continue;
+          }
+
+          // Remove the player from the local snake state
+          if (state.snakes[id]) {
+            delete state.snakes[id];
+          }
+          console.log("Removed player:", id);
+          render();
         }
       }
 
-      render();
-    }
+      if (data.type === "reset_game") {
+        startBtn.style.display = "inline-block";
+        resetBtn.style.display = "none";
+        function clamp(v, min, max) {
+          return Math.max(min, Math.min(max, v));
+        }
 
-    if (data.type === "reset_game") {
-      startBtn.style.display = "inline-block";
-      resetBtn.style.display = "none";
-      function clamp(v, min, max) {
-        return Math.max(min, Math.min(max, v));
-      }
-
-      for (const p of data.players) {
-        const x = clamp(p.x, 0, WORLD_COLS - 1);
-        const y = clamp(p.y, 0, WORLD_ROWS - 1);
-        const isMySnake = myPlayerId == p.playerId;
-        state.snakes[p.playerId] = {
-          body: [{ x, y }],
-          color: p.snakeColor,
-          mySnake: isMySnake,
-        };
-      }
-      render();
-    }
-
-    if (data.type == "game_starting") {
-      // set the snake states locally.
-      serverTick = data.tickCount;
-      console.log(data.apple);
-      state.apple.x = data.apple.X;
-      state.apple.y = data.apple.Y;
-      if (serverTick === 0) {
         for (const p of data.players) {
-          const x = p.x;
-          const y = p.y;
+          const x = clamp(p.x, 0, WORLD_COLS - 1);
+          const y = clamp(p.y, 0, WORLD_ROWS - 1);
           const isMySnake = myPlayerId == p.playerId;
           state.snakes[p.playerId] = {
             body: [{ x, y }],
@@ -385,45 +382,74 @@
             mySnake: isMySnake,
           };
         }
-        console.log(
-          "Starting position of snakes:",
-          JSON.parse(JSON.stringify(state.snakes))
-        );
-        startBtn.style.display = "none";
-        resetBtn.style.display = "none";
-        document.addEventListener("keydown", handleKeydown);
         render();
       }
-    }
-    if (data.type == "game_over") {
-      console.log("Ending game...");
-      startBtn.style.display = "none";
-      resetBtn.style.display = "inline-block";
-    }
 
-    if (data.type == "update_score") {
-      state.score = data.newScore;
-      state.apple.x = data.apple.X;
-      state.apple.y = data.apple.Y;
-      if (data.playerId == myPlayerId) {
-        updateScoreUI();
+      if (data.type == "game_starting") {
+        // set the snake states locally.
+        serverTick = data.tickCount;
+        console.log(data.apple);
+        state.apple.x = data.apple.X;
+        state.apple.y = data.apple.Y;
+        if (serverTick === 0) {
+          for (const p of data.players) {
+            const x = p.x;
+            const y = p.y;
+            const isMySnake = myPlayerId == p.playerId;
+            state.snakes[p.playerId] = {
+              body: [{ x, y }],
+              color: p.snakeColor,
+              mySnake: isMySnake,
+            };
+          }
+          console.log(
+            "Starting position of snakes:",
+            JSON.parse(JSON.stringify(state.snakes))
+          );
+          startBtn.style.display = "none";
+          resetBtn.style.display = "none";
+          document.addEventListener("keydown", handleKeydown);
+          render();
+        }
       }
-      render();
-    }
+      if (data.type == "game_over") {
+        console.log("Ending game...");
+        startBtn.style.display = "none";
+        resetBtn.style.display = "inline-block";
+        // Grab elements
+        const endScreen = document.getElementById("endScreen");
+        const endMessage = document.getElementById("endMessage");
 
-    if (data.type == "game_resetted") {
-      state.score = 0;
-      state.apple = { x: null, y: null };
-      updateScoreUI();
-      render();
-    }
-  };
+        if (endScreen && endMessage) {
+          endScreen.style.display = "inline-block";
+          endMessage.textContent = "You win!";
+        }
+      }
 
-  socket.onclose = () => {
-    console.log("❌ Disconnected from WebSocket server");
-  };
+      if (data.type == "update_score") {
+        state.score = data.newScore;
+        state.apple.x = data.apple.X;
+        state.apple.y = data.apple.Y;
+        if (data.playerId == myPlayerId) {
+          updateScoreUI();
+        }
+        render();
+      }
 
-  socket.onerror = (error) => {
-    console.error("⚠️ WebSocket error:", error);
-  };
+      if (data.type == "game_resetted") {
+        state.score = 0;
+        state.apple = { x: null, y: null };
+        updateScoreUI();
+        render();
+      }
+    };
+
+    socket.onclose = () => {
+      console.log("❌ Disconnected from WebSocket server");
+    };
+
+    socket.onerror = (error) => {
+      console.error("⚠️ WebSocket error:", error);
+    };
+  }
 })();

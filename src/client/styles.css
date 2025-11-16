@@ -19,11 +19,11 @@ h1 {
     flex-direction: column;
     align-items: center;
     gap: 8px;
+    position: relative; /* add this */
 }
 
 #gameCanvas {
     background: #1b5e20; /* green background */
-    border-radius: 6px;
     box-shadow: 0 6px 24px rgba(0,0,0,0.15);
 }
 
@@ -45,7 +45,11 @@ button:hover {
 }
 
 #score {
-    margin-left: 12px;
+    position: absolute;  /* change from current */
+    top: 10px;           /* distance from top of canvas */
+    left: 10px;          /* distance from left */
     font-weight: 600;
+    color: white;        /* optional: so it stands out */
+    z-index: 10;         /* ensure it’s above the canvas */
+    margin-left: 0;      /* remove previous margin-left */
 }
-
