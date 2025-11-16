@@ -327,13 +327,13 @@
       render();
     }
 
-    if (data.type === "player_disconnected") {
-      for (const p of data.disconnectedPlayer) {
+    if (data.type === "remove_player") {
+      for (const p of data.playerToRemove) {
         const id = p.playerId;
 
         // If it's me, then handle separately (optional)
         if (id === myPlayerId) {
-          console.warn("You have been disconnected from the game.");
+          console.warn("You have been removed from the game.");
           // redirect or show modal
           continue;
         }
@@ -342,8 +342,8 @@
         if (state.snakes[id]) {
           delete state.snakes[id];
         }
-
-        console.log("Removed disconnected player:", id);
+        console.log("Removed player:", id);
+        render();
       }
     }
 

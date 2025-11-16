@@ -31,17 +31,17 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 	log.Printf("CreateNewGame called for id %s", gameId)
 	// spawn a new go routine
 	newGame := game.Game{
-		Id:            gameId,
-		State:         game.Init,
-		Players:       make(map[uint64]*player.Player, MAX_NO_PLAYERS_IN_A_ROOM),
-		Width:         178 / 2,
-		Height:        100 / 2,
-		Updates:       make(chan game.GameState, 100),
-		Input:         make(chan player.PlayerInput, 100),
-		StopBroadcast: make(chan bool),
-		Broadcast:     make(chan []byte, 100),
-		Quit:          make(chan struct{}),
-		IdCounter: 0,
+		Id:              gameId,
+		State:           game.Init,
+		Players:         make(map[uint64]*player.Player, MAX_NO_PLAYERS_IN_A_ROOM),
+		Width:           178 / 2,
+		Height:          100 / 2,
+		Updates:         make(chan game.GameState, 100),
+		Input:           make(chan player.PlayerInput, 100),
+		StopBroadcast:   make(chan bool),
+		Broadcast:       make(chan []byte, 100),
+		Quit:            make(chan struct{}),
+		IdCounter:       0,
 		SnakeColorCount: 0,
 	}
 	gm.mu.Lock()
@@ -103,27 +103,29 @@ func (gm *GameManager) RunGame(g *game.Game) {
 			}
 
 			g.UpdatePlayersPositions()
-			winner, loser, isDraw := g.ContainSnakesCollision()
-			if winner != nil || loser != nil || isDraw {
+			if isSnakesCollision, winner, loser, isDraw := g.ContainSnakesCollision(); isSnakesCollision {
 				if isDraw {
 					fmt.Println("Collision detected: draw")
-					g.State = game.End
-				} else if winner.Id != loser.Id {
+					g.RemovePlayer(winner)
+					g.RemovePlayer(loser)
+				} else {
 					winner.Score++
-					loser.Score = 0
+					g.RemovePlayer(loser)
+				}
+				fmt.Printf("There are %v players left", len(g.Players))
+				if len(g.Players) == 1 {
+					// broadcast game over
 					g.State = game.End
+					tickMsg := map[string]interface{}{
+						"type":   "game_over",
+						"gameId": g.Id,
+					}
+					data, _ := json.Marshal(tickMsg)
+					g.Broadcast <- data
+					g.Updates <- game.End
+					fmt.Print("Game ended")
 				}
-
-				// broadcast game over
-				tickMsg := map[string]interface{}{
-					"type":   "game_over",
-					"gameId": g.Id,
-				}
-				data, _ := json.Marshal(tickMsg)
-				g.Broadcast <- data
-				g.Updates <- game.End
 			}
-
 			// 2️⃣ Always check apple collision
 			if hasAppleCollision, player := g.ContainAppleCollision(); hasAppleCollision {
 				player.Score++
@@ -183,13 +185,12 @@ func (gm *GameManager) processPlayerInput(g *game.Game, input *player.PlayerInpu
 }
 
 func (gm *GameManager) IsGameIdAlreadyExist(gameId string) bool {
-    gm.mu.Lock()
-    defer gm.mu.Unlock()
+	gm.mu.Lock()
+	defer gm.mu.Unlock()
 
-    _, exists := gm.Games[gameId]
-    return exists
+	_, exists := gm.Games[gameId]
+	return exists
 }
-
 
 func (gm *GameManager) IsGameRoomAlreadyFull(gameId string) bool {
 	g := gm.GetGameWithId(gameId)
@@ -230,12 +231,11 @@ func (gm *GameManager) runBroadcaster(g *game.Game) {
 }
 
 func (gm *GameManager) GetGameWithId(gameId string) *game.Game {
-    gm.mu.Lock()
-    defer gm.mu.Unlock()
+	gm.mu.Lock()
+	defer gm.mu.Unlock()
 
-    return gm.Games[gameId]
+	return gm.Games[gameId]
 }
-
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
@@ -263,7 +263,7 @@ func (gm *GameManager) HandleRoomCapacity(w http.ResponseWriter, r *http.Request
 
 	vars := mux.Vars(r)
 	gameId := vars["gameId"]
-	
+
 	log.Printf("HandleRoomCapacity called for %s (method=%s)", gameId, r.Method)
 
 	if gm.IsGameRoomAlreadyFull(gameId) || !gm.IsGameInit(gameId) {
@@ -285,8 +285,6 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("Upgrade error:", err)
 		return
 	}
-
-	
 
 	var currentGame *game.Game
 
@@ -350,36 +348,6 @@ func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
 		var msg map[string]interface{}
 		if err := p.Conn.ReadJSON(&msg); err != nil {
 			log.Printf("Player %d disconnected from game %s: %v", p.Id, g.Id, err)
-			var disconnectedPlayer []map[string]interface{}
-
-			for _, pl := range g.Players {
-				if pl.Id == p.Id {
-					// Convert snake body (linked list) into slice of positions
-					var bodyPositions []map[string]int
-					for e := pl.Snake.Body.Front(); e != nil; e = e.Next() {
-						pos := e.Value.(player.Position)
-						bodyPositions = append(bodyPositions, map[string]int{
-							"x": pos.X,
-							"y": pos.Y,
-						})
-					}
-					disconnectedPlayer = append(disconnectedPlayer, map[string]interface{}{
-						"playerId":   pl.Id,
-						"snakeColor": pl.SnakeColor.String(),
-						"body":       bodyPositions,
-						"length":     pl.Snake.Body.Len(),
-					})
-				}
-
-			}
-			msg := map[string]interface{}{
-				"type":               "player_disconnected",
-				"gameId":             g.Id,
-				"disconnectedPlayer": disconnectedPlayer,
-			}
-
-			data, _ := json.Marshal(msg)
-			g.Broadcast <- data
 			g.RemovePlayer(p)
 			if len(g.Players) <= 0 {
 				gm.RemoveGame(g.Id)

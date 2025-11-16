@@ -18,20 +18,20 @@ const (
 )
 
 type Game struct {
-	Id            string
-	Players       map[uint64]*player.Player
-	Apple         player.Position
-	State         GameState
-	Width         int
-	Height        int
-	Updates       chan GameState
-	Input         chan player.PlayerInput
-	StopBroadcast chan bool
-	Broadcast     chan []byte
-	Quit          chan struct{}
-	idMutex sync.Mutex
-	IdCounter int64
-	colorMux sync.Mutex
+	Id              string
+	Players         map[uint64]*player.Player
+	Apple           player.Position
+	State           GameState
+	Width           int
+	Height          int
+	Updates         chan GameState
+	Input           chan player.PlayerInput
+	StopBroadcast   chan bool
+	Broadcast       chan []byte
+	Quit            chan struct{}
+	idMutex         sync.Mutex
+	IdCounter       int64
+	colorMux        sync.Mutex
 	SnakeColorCount int
 }
 
@@ -42,22 +42,21 @@ var startingOffsets = []struct{ xOffset, yOffset int }{
 	{-1, 0},
 }
 
-func (g *Game)GeneratePlayerId() int64 {
+func (g *Game) GeneratePlayerId() int64 {
 	g.idMutex.Lock()
 	defer g.idMutex.Unlock()
 	g.IdCounter++
 	return g.IdCounter
 }
 
-
 func (g *Game) Shutdown() {
 	g.Players = nil
-    select {
-    case <-g.Quit:
-        // already closed / signalled
-    default:
-        close(g.Quit)
-    }
+	select {
+	case <-g.Quit:
+		// already closed / signalled
+	default:
+		close(g.Quit)
+	}
 
 }
 
@@ -94,7 +93,7 @@ func (g *Game) GetRandomPosition() player.Position {
 	}
 }
 
-func (g *Game)getColor() player.SnakeColor {
+func (g *Game) getColor() player.SnakeColor {
 	g.colorMux.Lock()
 	defer g.colorMux.Unlock()
 	color := player.SnakeColor(g.SnakeColorCount % 4)
@@ -154,16 +153,44 @@ func (g *Game) AddPlayer(p *player.Player) {
 }
 
 func (g *Game) RemovePlayer(p *player.Player) {
-    fmt.Printf("Removing player with id: %v \n", p.Id)
-    delete(g.Players, p.Id)
-    g.BroadcastPlayersData()
+	fmt.Printf("Removing player with id: %v \n", p.Id)
+	var playerToRemove []map[string]interface{}
+
+	for _, pl := range g.Players {
+		if pl.Id == p.Id {
+			// Convert snake body (linked list) into slice of positions
+			var bodyPositions []map[string]int
+			for e := pl.Snake.Body.Front(); e != nil; e = e.Next() {
+				pos := e.Value.(player.Position)
+				bodyPositions = append(bodyPositions, map[string]int{
+					"x": pos.X,
+					"y": pos.Y,
+				})
+			}
+			playerToRemove = append(playerToRemove, map[string]interface{}{
+				"playerId":   pl.Id,
+				"snakeColor": pl.SnakeColor.String(),
+				"body":       bodyPositions,
+				"length":     pl.Snake.Body.Len(),
+			})
+		}
+
+	}
+	msg := map[string]interface{}{
+		"type":               "remove_player",
+		"gameId":             g.Id,
+		"playerToRemove": playerToRemove,
+	}
+
+	data, _ := json.Marshal(msg)
+	g.Broadcast <- data
+	delete(g.Players, p.Id)
+	g.BroadcastPlayersData()
 }
-
-
 
 // Returns the player whose body was collided into (winner) and
 // the player whose head collided (loser), or nil, nil if no collision.
-func (g *Game) ContainSnakesCollision() (winner *player.Player, loser *player.Player, isDraw bool) {
+func (g *Game) ContainSnakesCollision() (containCollision bool, winner *player.Player, loser *player.Player, isDraw bool) {
 	// Track previous and current head positions
 	prevHead := make(map[*player.Player]player.Position)
 	currHead := make(map[*player.Player]player.Position)
@@ -204,7 +231,7 @@ func (g *Game) ContainSnakesCollision() (winner *player.Player, loser *player.Pl
 			// Did they swap heads?
 			if currA == prevB && currB == prevA {
 				fmt.Println("Head-swap detected between:", pA.Id, "and", pB.Id)
-				return nil, nil, true // DRAW
+				return true,pA, pB, true // DRAW
 			}
 		}
 	}
@@ -217,19 +244,19 @@ func (g *Game) ContainSnakesCollision() (winner *player.Player, loser *player.Pl
 		// head-to-body
 		if hitPlayer, exists := bodyPositions[key]; exists {
 			fmt.Println("Collision! Head of", p.Id, "hit body of", hitPlayer.Id)
-			return hitPlayer, p, false
+			return true, hitPlayer, p, false
 		}
 
 		// head-to-head (same tile at same time)
 		for other, otherHead := range currHead {
 			if other != p && otherHead == head {
 				fmt.Println("Head-to-head:", p.Id, "and", other.Id)
-				return nil, nil, true // DRAW
+				return true, p, other, true // DRAW
 			}
 		}
 	}
 
-	return nil, nil, false // no collision
+	return false, nil, nil, false // no collision
 }
 
 func (g *Game) ContainAppleCollision() (bool, *player.Player) {
