@@ -8,8 +8,8 @@
   const canvas = document.getElementById("gameCanvas");
   const ctx = canvas.getContext("2d");
 
-  const WORLD_COLS = 178 / 2;
-  const WORLD_ROWS = 100 / 2;
+  const WORLD_COLS = 178 * 5;
+  const WORLD_ROWS = 100 * 5;
 
   const SNAKE_COLOR = "#1976d2"; // blue (fallback)
   const APPLE_COLOR = "#d32f2f"; // red

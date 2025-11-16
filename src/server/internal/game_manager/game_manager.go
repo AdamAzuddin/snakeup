@@ -14,7 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const MAX_NO_PLAYERS_IN_A_ROOM = 4
+const MAX_NO_PLAYERS_IN_A_ROOM = 50
 
 type GameManager struct {
 	Games map[string]*game.Game
@@ -34,8 +34,8 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 		Id:              gameId,
 		State:           game.Init,
 		Players:         make(map[uint64]*player.Player, MAX_NO_PLAYERS_IN_A_ROOM),
-		Width:           178 / 2,
-		Height:          100 / 2,
+		Width:           178 * 5,
+		Height:          100 * 5,
 		Updates:         make(chan game.GameState, 100),
 		Input:           make(chan player.PlayerInput, 100),
 		StopBroadcast:   make(chan bool),
