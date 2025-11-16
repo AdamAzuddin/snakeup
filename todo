@@ -1,5 +1,8 @@
-1. expand world size to 100 players (ignore ui)
-2. switch from json to protobuf
-3. build bot client to stress test
-4. implement camera follow
-5. implement minimap
+1. Expand world
+2. Implement spatial partitioning (spatial hashing/grid buckets)
+3. Switch JSON → Protobuf
+4. Build bot client
+5. Stress test server
+6. Fix performance bottlenecks
+7. Implement camera follow
+8. Implement minimap
