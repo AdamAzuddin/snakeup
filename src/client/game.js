@@ -80,10 +80,6 @@
     snake.body.pop();
   }
 
-  function positionsEqual(a, b) {
-    return a.x === b.x && a.y === b.y;
-  }
-
   // -----------------------------
   // Input handling
   // -----------------------------
@@ -203,15 +199,6 @@
     }
   }
 
-  function drawLoseText() {
-    ctx.fillStyle = TEXT_COLOR;
-    ctx.font =
-      "bold 32px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("You lose!", canvas.width / 2, canvas.height / 2);
-  }
-
   function render() {
     clearBoard();
     drawApple();
@@ -231,7 +218,7 @@
   });
 
   resetBtn.addEventListener("click", () => {
-    if (state.socket!=null && state.socket.readyState === WebSocket.OPEN) {
+    if (state.socket != null && state.socket.readyState === WebSocket.OPEN) {
       state.socket.send(JSON.stringify({ type: "reset", room: gameId }));
       resetGame();
     } else {
@@ -246,6 +233,10 @@
         }
       }, 500);
     }
+  });
+
+  document.getElementById("homeBtn").addEventListener("click", () => {
+    window.location.href = "index.html";
   });
 
   // Initial render with start screen (not running)
@@ -268,7 +259,7 @@
         return Promise.reject("Game not valid");
       }
       const socket = new WebSocket(`ws://localhost:42069/game/${gameId}`);
-      state.socket = socket
+      state.socket = socket;
       setupSocket(socket);
     })
     .catch((err) => console.error(err));
@@ -343,6 +334,14 @@
         state.snakes = {};
         state.apple = {};
         clearBoard();
+        // Grab elements
+        const endScreen = document.getElementById("endScreen");
+        const endMessage = document.getElementById("endMessage");
+
+        if (endScreen && endMessage) {
+          endScreen.style.display = "inline-block";
+          endMessage.textContent = "You lose!";
+        }
         render();
       }
 
@@ -417,6 +416,14 @@
         console.log("Ending game...");
         startBtn.style.display = "none";
         resetBtn.style.display = "inline-block";
+        // Grab elements
+        const endScreen = document.getElementById("endScreen");
+        const endMessage = document.getElementById("endMessage");
+
+        if (endScreen && endMessage) {
+          endScreen.style.display = "inline-block";
+          endMessage.textContent = "You win!";
+        }
       }
 
       if (data.type == "update_score") {
