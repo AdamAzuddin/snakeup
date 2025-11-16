@@ -17,6 +17,7 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/game/{gameId}", gameManager.GameHandler)
 	r.HandleFunc("/api/join/{gameId}", gameManager.HandleRoomCapacity).Methods("POST", "OPTIONS")
+	r.HandleFunc("/check-game/{gameId}", gameManager.CheckGameJoinable).Methods("GET", "OPTIONS")
 
 	err := http.ListenAndServe(":42069", r)
 	if err != nil {

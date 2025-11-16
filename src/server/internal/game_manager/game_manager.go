@@ -275,6 +275,36 @@ func (gm *GameManager) HandleRoomCapacity(w http.ResponseWriter, r *http.Request
 	w.Write([]byte(`{"status":"ok","message":"Room joined successfully"}`))
 }
 
+func (gm *GameManager) CheckGameJoinable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	vars := mux.Vars(r)
+	gameId := vars["gameId"]
+
+	// check logic
+	if !gm.IsGameIdAlreadyExist(gameId) {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	g := gm.GetGameWithId(gameId)
+	if gm.IsGameRoomAlreadyFull(gameId) {
+		http.Error(w, "Room full", http.StatusForbidden)
+		return
+	}
+
+	if g.State != game.Init {
+		http.Error(w, "Game already started", http.StatusForbidden)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"ok","message":"Room joined successfully"}`))
+}
+
 func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract game ID from URL
 	vars := mux.Vars(r)
@@ -285,7 +315,6 @@ func (gm *GameManager) GameHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("Upgrade error:", err)
 		return
 	}
-
 	var currentGame *game.Game
 
 	// check if game id already exist
