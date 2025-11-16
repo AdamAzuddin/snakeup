@@ -43,6 +43,7 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 		Quit:            make(chan struct{}),
 		IdCounter:       0,
 		SnakeColorCount: 0,
+		ColorList: player.GenerateColors(MAX_NO_PLAYERS_IN_A_ROOM),
 	}
 	gm.mu.Lock()
 	gm.Games[gameId] = &newGame
@@ -67,7 +68,7 @@ func (gm *GameManager) RunGame(g *game.Game) {
 		headPos := pl.Snake.Body.Front().Value.(player.Position) // type assertion
 		playersData = append(playersData, map[string]interface{}{
 			"playerId":   pl.Id,
-			"snakeColor": pl.SnakeColor.String(),
+			"snakeColor": pl.SnakeColor,
 			"x":          headPos.X,
 			"y":          headPos.Y})
 	}

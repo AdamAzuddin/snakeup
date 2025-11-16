@@ -33,6 +33,7 @@ type Game struct {
 	IdCounter       int64
 	colorMux        sync.Mutex
 	SnakeColorCount int
+	ColorList       []string
 }
 
 var startingOffsets = []struct{ xOffset, yOffset int }{
@@ -93,10 +94,11 @@ func (g *Game) GetRandomPosition() player.Position {
 	}
 }
 
-func (g *Game) getColor() player.SnakeColor {
+func (g *Game) getColor() string {
 	g.colorMux.Lock()
 	defer g.colorMux.Unlock()
-	color := player.SnakeColor(g.SnakeColorCount % 4)
+
+	color := g.ColorList[g.SnakeColorCount%len(g.ColorList)]
 	g.SnakeColorCount++
 	return color
 }
@@ -117,7 +119,7 @@ func (g *Game) BroadcastPlayersData() {
 
 		playersData = append(playersData, map[string]interface{}{
 			"playerId":   pl.Id,
-			"snakeColor": pl.SnakeColor.String(),
+			"snakeColor": pl.SnakeColor,
 			"body":       bodyPositions, // send the whole body
 			"length":     pl.Snake.Body.Len(),
 		})
@@ -136,11 +138,12 @@ func (g *Game) BroadcastPlayersData() {
 
 func (g *Game) AddPlayer(p *player.Player) {
 	fmt.Printf("Adding player with id: %v \n", p.Id)
-	p.SnakeColor = player.SnakeColor(g.getColor())
+	p.SnakeColor = g.getColor()
 	fmt.Printf("Adding player with color id: %v\n", p.SnakeColor)
 	if len(g.Players) < 4 {
 		pos := g.GetRandomPosition()
-		p.Snake = player.NewSnake(pos.X, pos.Y, player.Direction{X: startingOffsets[p.SnakeColor].xOffset, Y: startingOffsets[p.SnakeColor].yOffset})
+		offset := g.GetRandomStartingOffset()
+		p.Snake = player.NewSnake(pos.X, pos.Y, offset)
 	} else {
 		// fallback if more players somehow
 		p.Snake = player.NewSnake(20, 20, player.Direction{X: 1, Y: 0})
@@ -169,7 +172,7 @@ func (g *Game) RemovePlayer(p *player.Player) {
 			}
 			playerToRemove = append(playerToRemove, map[string]interface{}{
 				"playerId":   pl.Id,
-				"snakeColor": pl.SnakeColor.String(),
+				"snakeColor": pl.SnakeColor,
 				"body":       bodyPositions,
 				"length":     pl.Snake.Body.Len(),
 			})
@@ -178,16 +181,16 @@ func (g *Game) RemovePlayer(p *player.Player) {
 	}
 
 	msg := map[string]interface{}{
-		"type":               "player_died",
-		"gameId":             g.Id,
+		"type":     "player_died",
+		"gameId":   g.Id,
 		"playerId": p.Id,
 	}
 	data, _ := json.Marshal(msg)
 	p.Send <- data
 
 	msg = map[string]interface{}{
-		"type":               "remove_player",
-		"gameId":             g.Id,
+		"type":           "remove_player",
+		"gameId":         g.Id,
 		"playerToRemove": playerToRemove,
 	}
 
@@ -240,7 +243,7 @@ func (g *Game) ContainSnakesCollision() (containCollision bool, winner *player.P
 			// Did they swap heads?
 			if currA == prevB && currB == prevA {
 				fmt.Println("Head-swap detected between:", pA.Id, "and", pB.Id)
-				return true,pA, pB, true // DRAW
+				return true, pA, pB, true // DRAW
 			}
 		}
 	}
@@ -288,11 +291,18 @@ func (g *Game) UpdatePlayersPositions() {
 	g.BroadcastPlayersData()
 }
 
+func (g *Game) GetRandomStartingOffset() player.Direction {
+	idx := rand.Intn(len(startingOffsets))
+	offset := startingOffsets[idx]
+	return player.Direction{X: offset.xOffset, Y: offset.yOffset}
+}
+
 func (g *Game) ResetGame() {
 	g.State = Init
 	for _, p := range g.Players {
 		pos := g.GetRandomPosition()
-		p.Snake = player.NewSnake(pos.X, pos.Y, player.Direction{X: startingOffsets[p.SnakeColor].xOffset, Y: startingOffsets[p.SnakeColor].yOffset})
+		offset := g.GetRandomStartingOffset()
+		p.Snake = player.NewSnake(pos.X, pos.Y, offset)
 		p.Score = 0
 	}
 	var playersData []map[string]interface{}
@@ -300,7 +310,7 @@ func (g *Game) ResetGame() {
 		headPos := pl.Snake.Body.Front().Value.(player.Position)
 		playersData = append(playersData, map[string]interface{}{
 			"playerId":              pl.Id,
-			"snakeColor":            pl.SnakeColor.String(),
+			"snakeColor":            pl.SnakeColor,
 			"x":                     headPos.X,
 			"y":                     headPos.Y,
 			"lastProcessedInputSeq": pl.LastProcessedInputSeq,

@@ -2,13 +2,14 @@ package player
 
 import (
 	"container/list"
-
+	"fmt"
+	"math/rand"
 	"github.com/gorilla/websocket"
 )
 
 type Player struct {
 	Id                    uint64
-	SnakeColor            SnakeColor
+	SnakeColor            string
 	Score                 int
 	GameId                string
 	Conn                  *websocket.Conn
@@ -98,38 +99,55 @@ func (s *Snake) Grow(n int) {
 	s.GrowPending += n
 }
 
-type SnakeColor int
+func GenerateColors(n int) []string {
+    colors := make([]string, n)
+    for i := 0; i < n; i++ {
+        hue := float64(i) * 360.0 / float64(n)
+        colors[i] = HSLToHex(hue, 80, 50)
+    }
 
-const (
-	Blue SnakeColor = iota
-	Orange
-	Purple
-	Yellow
-)
+    // Shuffle the colors to avoid similar colors appearing consecutively
+    rand.Shuffle(len(colors), func(i, j int) {
+        colors[i], colors[j] = colors[j], colors[i]
+    })
 
-// String returns the hex color value for each snake color
-func (sc SnakeColor) String() string {
-	switch sc {
-	case Blue:
-		return "#2196f3"
-	case Orange:
-		return "#ff9800"
-	case Purple:
-		return "#9c27b0"
-	case Yellow:
-		return "#ffc107"
+    return colors
+}
+
+func abs(a float64) float64 {
+    if a < 0 { return -a }
+    return a
+}
+
+
+func HSLToHex(h, s, l float64) string {
+	s /= 100
+	l /= 100
+	c := (1 - abs(2*l-1)) * s
+	x := c * (1 - abs(float64(int(h/60)%2)-1))
+	m := l - c/2
+	var r, g, b float64
+
+	switch {
+	case h < 60:
+		r, g, b = c, x, 0
+	case h < 120:
+		r, g, b = x, c, 0
+	case h < 180:
+		r, g, b = 0, c, x
+	case h < 240:
+		r, g, b = 0, x, c
+	case h < 300:
+		r, g, b = x, 0, c
 	default:
-		return "#ffffff" // fallback white
+		r, g, b = c, 0, x
 	}
-}
 
-func GetAllColors() []SnakeColor {
-	return []SnakeColor{Blue, Orange, Purple, Yellow}
-}
+	r = (r + m) * 255
+	g = (g + m) * 255
+	b = (b + m) * 255
 
-// IsValidColor checks if a given int is a valid SnakeColor
-func IsValidColor(color int) bool {
-	return color >= 0 && color < 4
+	return fmt.Sprintf("#%02x%02x%02x", int(r), int(g), int(b))
 }
 
 type PlayerInput struct {
