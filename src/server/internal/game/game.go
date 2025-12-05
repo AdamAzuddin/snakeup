@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/AdamAzuddin/snakeup/server/internal/player"
+	"github.com/AdamAzuddin/snakeup/server/internal/spatial_hash_grid"
 )
 
 type GameState int
@@ -20,10 +21,11 @@ const (
 type Game struct {
 	Id              string
 	Players         map[uint64]*player.Player
-	Apple           player.Position
+	Apple           []*player.Apple
 	State           GameState
 	Width           int
 	Height          int
+	WorldGrid       spatial_hash_grid.SpatialHashGrid
 	Updates         chan GameState
 	Input           chan player.PlayerInput
 	StopBroadcast   chan bool
@@ -103,13 +105,34 @@ func (g *Game) getColor() string {
 	return color
 }
 
-func (g *Game) BroadcastPlayersData() {
-	var playersData []map[string]interface{}
+func (g *Game) BroadcastPlayersData(p *player.Player) {
+	g.WorldGrid.UpdateClient(p)
+	nearby := g.WorldGrid.FindNear(p)
 
-	for _, pl := range g.Players {
-		// Convert snake body (linked list) into slice of positions
+	var bodyPositions []map[string]int
+	for e := p.Snake.Body.Front(); e != nil; e = e.Next() {
+		pos := e.Value.(player.Position)
+		bodyPositions = append(bodyPositions, map[string]int{
+			"x": pos.X,
+			"y": pos.Y,
+		})
+	}
+
+	playersData := []map[string]interface{}{
+		{
+			"playerId":   p.Id,
+			"snakeColor": p.SnakeColor,
+			"body":       bodyPositions,
+			"length":     p.Snake.Body.Len(),
+		},
+	}
+
+	applesData := []map[string]interface{}{}
+
+	for other := range nearby.Players { // iterate over the Set[*player.Player]
+		// Convert snake body into slice
 		var bodyPositions []map[string]int
-		for e := pl.Snake.Body.Front(); e != nil; e = e.Next() {
+		for e := other.Snake.Body.Front(); e != nil; e = e.Next() {
 			pos := e.Value.(player.Position)
 			bodyPositions = append(bodyPositions, map[string]int{
 				"x": pos.X,
@@ -118,10 +141,18 @@ func (g *Game) BroadcastPlayersData() {
 		}
 
 		playersData = append(playersData, map[string]interface{}{
-			"playerId":   pl.Id,
-			"snakeColor": pl.SnakeColor,
-			"body":       bodyPositions, // send the whole body
-			"length":     pl.Snake.Body.Len(),
+			"playerId":   other.Id,
+			"snakeColor": other.SnakeColor,
+			"body":       bodyPositions,
+			"length":     other.Snake.Body.Len(),
+		})
+	}
+
+	for visibleApples := range nearby.Apples{
+		applesData = append(applesData, map[string]interface{}{
+			"appleId": visibleApples.Id,
+			"appleColor": visibleApples.Color,
+			"pos": visibleApples.Position,
 		})
 	}
 
@@ -129,11 +160,12 @@ func (g *Game) BroadcastPlayersData() {
 		"type":    "players_update",
 		"gameId":  g.Id,
 		"players": playersData,
-		"apple":   g.Apple,
+		"apples":   applesData,
 	}
 
 	data, _ := json.Marshal(msg)
-	g.Broadcast <- data
+
+	p.Send <- data
 }
 
 func (g *Game) AddPlayer(p *player.Player) {
@@ -150,9 +182,20 @@ func (g *Game) AddPlayer(p *player.Player) {
 	}
 
 	g.Players[p.Id] = p
+	g.WorldGrid.NewClient(p)
 
 	// Build a "players_update" message with the full list
-	g.BroadcastPlayersData()
+	g.BroadcastPlayersData(p)
+}
+
+func (g *Game) ToClientSpace(target player.Position, viewer player.Position, view player.Position) player.Position {
+	cx := view.X / 2
+	cy := view.Y / 2
+
+	return player.Position{
+		X: target.X - viewer.X + cx,
+		Y: target.Y - viewer.Y + cy,
+	}
 }
 
 func (g *Game) RemovePlayer(p *player.Player) {
@@ -197,7 +240,6 @@ func (g *Game) RemovePlayer(p *player.Player) {
 	data, _ = json.Marshal(msg)
 	g.Broadcast <- data
 	delete(g.Players, p.Id)
-	g.BroadcastPlayersData()
 }
 
 // Returns the player whose body was collided into (winner) and
@@ -271,24 +313,24 @@ func (g *Game) ContainSnakesCollision() (containCollision bool, winner *player.P
 	return false, nil, nil, false // no collision
 }
 
-func (g *Game) ContainAppleCollision() (bool, *player.Player) {
+func (g *Game) ContainAppleCollision() (bool, *player.Player, *player.Apple) {
 	for _, p := range g.Players {
 		headPos := p.Snake.Body.Front().Value.(player.Position)
-		if headPos.X == g.Apple.X && headPos.Y == g.Apple.Y {
-			return true, p
+
+		for _, apple := range g.Apple {
+			if headPos.X == apple.Position.X && headPos.Y == apple.Position.Y {
+				return true, p, apple
+			}
 		}
 	}
-	return false, nil
+	return false, nil, nil
 }
 
 func (g *Game) UpdatePlayersPositions() {
-	// update each player's position based on their starting offsets
 	for i := range g.Players {
 		g.Players[i].Snake.Move(g.Width, g.Height)
+		g.BroadcastPlayersData(g.Players[i])
 	}
-
-	// build tick message with updated positions
-	g.BroadcastPlayersData()
 }
 
 func (g *Game) GetRandomStartingOffset() player.Direction {

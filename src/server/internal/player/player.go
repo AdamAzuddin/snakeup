@@ -3,8 +3,8 @@ package player
 import (
 	"container/list"
 	"fmt"
-	"math/rand"
 	"github.com/gorilla/websocket"
+	"math/rand"
 )
 
 type Player struct {
@@ -16,6 +16,14 @@ type Player struct {
 	Send                  chan []byte
 	LastProcessedInputSeq int
 	Snake                 *Snake
+	Bounds                Position
+	Indices               []Position
+}
+
+type Apple struct{
+	Id uint64
+	Color string
+	Position Position
 }
 
 // ----------------------------
@@ -100,25 +108,25 @@ func (s *Snake) Grow(n int) {
 }
 
 func GenerateColors(n int) []string {
-    colors := make([]string, n)
-    for i := 0; i < n; i++ {
-        hue := float64(i) * 360.0 / float64(n)
-        colors[i] = HSLToHex(hue, 80, 50)
-    }
+	colors := make([]string, n)
+	for i := range n {
+		hue := float64(i) * 360.0 / float64(n)
+		colors[i] = HSLToHex(hue, 80, 50)
+	}
 
-    // Shuffle the colors to avoid similar colors appearing consecutively
-    rand.Shuffle(len(colors), func(i, j int) {
-        colors[i], colors[j] = colors[j], colors[i]
-    })
+	rand.Shuffle(len(colors), func(i, j int) {
+		colors[i], colors[j] = colors[j], colors[i]
+	})
 
-    return colors
+	return colors
 }
 
 func abs(a float64) float64 {
-    if a < 0 { return -a }
-    return a
+	if a < 0 {
+		return -a
+	}
+	return a
 }
-
 
 func HSLToHex(h, s, l float64) string {
 	s /= 100

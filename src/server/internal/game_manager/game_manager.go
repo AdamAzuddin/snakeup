@@ -10,11 +10,14 @@ import (
 
 	"github.com/AdamAzuddin/snakeup/server/internal/game"
 	"github.com/AdamAzuddin/snakeup/server/internal/player"
+	"github.com/AdamAzuddin/snakeup/server/internal/spatial_hash_grid"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
-const MAX_NO_PLAYERS_IN_A_ROOM = 50
+const MAX_NO_PLAYERS_IN_A_ROOM = 100
+const WORLD_MAX=10000
+const APPLE_COUNT=200
 
 type GameManager struct {
 	Games map[string]*game.Game
@@ -29,13 +32,23 @@ func (gm *GameManager) RemoveGame(gameId string) {
 
 func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 	log.Printf("CreateNewGame called for id %s", gameId)
+
+	shg := spatial_hash_grid.SpatialHashGrid{
+		Bounds: make([]player.Position, 0),
+		Dimensions: player.Position{X: 50, Y: 50},
+		Cells: make(map[string]*spatial_hash_grid.GridCell),
+	}
+
+	shg.Bounds = append(shg.Bounds, player.Position{X:-WORLD_MAX, Y: -WORLD_MAX})
+	shg.Bounds = append(shg.Bounds, player.Position{X:WORLD_MAX, Y: WORLD_MAX})
 	// spawn a new go routine
 	newGame := game.Game{
 		Id:              gameId,
 		State:           game.Init,
 		Players:         make(map[uint64]*player.Player, MAX_NO_PLAYERS_IN_A_ROOM),
-		Width:           178 * 5,
-		Height:          100 * 5,
+		Width:           WORLD_MAX,
+		Height:          WORLD_MAX,
+		WorldGrid:       shg,
 		Updates:         make(chan game.GameState, 100),
 		Input:           make(chan player.PlayerInput, 100),
 		StopBroadcast:   make(chan bool),
@@ -43,7 +56,7 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 		Quit:            make(chan struct{}),
 		IdCounter:       0,
 		SnakeColorCount: 0,
-		ColorList: player.GenerateColors(MAX_NO_PLAYERS_IN_A_ROOM),
+		ColorList:       player.GenerateColors(MAX_NO_PLAYERS_IN_A_ROOM),
 	}
 	gm.mu.Lock()
 	gm.Games[gameId] = &newGame
@@ -74,7 +87,17 @@ func (gm *GameManager) RunGame(g *game.Game) {
 	}
 
 	// Init apple
-	g.Apple = g.GetRandomPosition()
+	g.Apple=make([]*player.Apple, 0)
+
+	for range APPLE_COUNT {
+		newApple := player.Apple{
+			Id: uint64(g.GeneratePlayerId()),
+			Color: "#ff0000",
+			Position: g.GetRandomPosition(),
+		}
+		g.Apple = append(g.Apple, &newApple)
+		g.WorldGrid.InsertApple(&newApple)
+	}
 
 	msg := map[string]interface{}{
 		"type":      "game_starting",
@@ -128,10 +151,10 @@ func (gm *GameManager) RunGame(g *game.Game) {
 				}
 			}
 			// 2️⃣ Always check apple collision
-			if hasAppleCollision, player := g.ContainAppleCollision(); hasAppleCollision {
+			if hasAppleCollision, player, collidedApple := g.ContainAppleCollision(); hasAppleCollision && collidedApple!=nil {
 				player.Score++
 				player.Snake.Grow(1)
-				g.Apple = g.GetRandomPosition()
+				
 				tickMsg := map[string]interface{}{
 					"type":     "update_score",
 					"playerId": player.Id,
@@ -139,6 +162,9 @@ func (gm *GameManager) RunGame(g *game.Game) {
 					"apple":    g.Apple,
 					"gameId":   g.Id,
 				}
+
+				fmt.Printf("%v apples left", len(g.Apple))
+				collidedApple.Position = g.GetRandomPosition()
 				data, _ := json.Marshal(tickMsg)
 				g.Broadcast <- data
 			}
