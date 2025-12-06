@@ -12,6 +12,7 @@ type Player struct {
 	SnakeColor            string
 	Score                 int
 	GameId                string
+	IsPaused              bool
 	Conn                  *websocket.Conn
 	Send                  chan []byte
 	LastProcessedInputSeq int
@@ -20,9 +21,9 @@ type Player struct {
 	Indices               []Position
 }
 
-type Apple struct{
-	Id uint64
-	Color string
+type Apple struct {
+	Id       uint64
+	Color    string
 	Position Position
 }
 

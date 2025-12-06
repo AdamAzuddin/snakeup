@@ -24,7 +24,7 @@ type Game struct {
 	Players         map[uint64]*player.Player
 	Apple           []*player.Apple
 	Walls           []*wall.WallChunk
-	ChunkSize int
+	ChunkSize       int
 	State           GameState
 	Width           int
 	Height          int
@@ -67,48 +67,47 @@ func (g *Game) Shutdown() {
 }
 
 func (g *Game) InitWalls() {
-    chunkSize := g.ChunkSize
+	chunkSize := g.ChunkSize
 
-    startX := -g.Width
-    startY := -g.Height
-    endX := g.Width
-    endY := g.Height
+	startX := -g.Width
+	startY := -g.Height
+	endX := g.Width
+	endY := g.Height
 
-    chunks := []*wall.WallChunk{}
-    id := uint64(1)
+	chunks := []*wall.WallChunk{}
+	id := uint64(1)
 
-    gridX := 0
-    for x := startX; x+chunkSize <= endX; x += chunkSize {
-        gridY := 0
-        for y := startY; y+chunkSize <= endY; y += chunkSize {
+	gridX := 0
+	for x := startX; x+chunkSize <= endX; x += chunkSize {
+		gridY := 0
+		for y := startY; y+chunkSize <= endY; y += chunkSize {
 
-            // ✅ alternating pattern
-            if (gridX+gridY)%2 != 0 {
-                gridY++
-                continue
-            }
+			// ✅ alternating pattern
+			if (gridX+gridY)%2 != 0 {
+				gridY++
+				continue
+			}
 
-            chunk := &wall.WallChunk{
-                Id:       id,
-                Position: player.Position{X: x, Y: y},
-                Width:    chunkSize,
-                Height:   chunkSize,
-            }
+			chunk := &wall.WallChunk{
+				Id:       id,
+				Position: player.Position{X: x, Y: y},
+				Width:    chunkSize,
+				Height:   chunkSize,
+			}
 
-            chunk.GenerateMaze()
-            g.WorldGrid.InsertWallChunk(chunk)
+			chunk.GenerateMaze()
+			g.WorldGrid.InsertWallChunk(chunk)
 
-            chunks = append(chunks, chunk)
-            id++
-            gridY++
-        }
-        gridX++
-    }
+			chunks = append(chunks, chunk)
+			id++
+			gridY++
+		}
+		gridX++
+	}
 
-    g.Walls = chunks
-    println("Wall chunks generated:", len(chunks))
+	g.Walls = chunks
+	println("Wall chunks generated:", len(chunks))
 }
-
 
 func (g *Game) GetRandomPosition() player.Position {
 	for {
@@ -409,10 +408,11 @@ func (g *Game) ContainWallCollision() (bool, *player.Player) {
 	return false, nil
 }
 
-
 func (g *Game) UpdatePlayersPositions() {
 	for i := range g.Players {
-		g.Players[i].Snake.Move(g.Width, g.Height)
+		if !g.Players[i].IsPaused {
+			g.Players[i].Snake.Move(g.Width, g.Height)
+		}
 		g.BroadcastPlayersData(g.Players[i])
 	}
 }

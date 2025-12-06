@@ -54,6 +54,7 @@
 
   const state = {
     snakes: {},
+    isPaused: false,
     direction: { x: 1, y: 0 },
     nextDirection: { x: 1, y: 0 },
     apples: {},
@@ -101,6 +102,26 @@
   };
 
   function handleKeydown(event) {
+    if (event.code === "Space") {
+      let data = {};
+      if (!state.isPaused) {
+        data = {
+          type: "pause",
+          roomId: gameId,
+          playerId: myPlayerId,
+        };
+      } else {
+        data = {
+          type: "resume",
+          roomId: gameId,
+          playerId: myPlayerId,
+        };
+      }
+      if (state.socket) state.socket.send(JSON.stringify(data));
+      state.isPaused = !state.isPaused;
+      return;
+    }
+
     const newDir = keyToDirection[event.key];
     if (!newDir) return;
 

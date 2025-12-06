@@ -444,6 +444,21 @@ func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
 
 				g.Input <- input
 
+			case "pause":
+				playerId := uint64(msg["playerId"].(float64))
+				roomId := msg["roomId"]
+				if (playerId==p.Id && roomId==g.Id){
+					p.IsPaused = true
+				}
+
+			case "resume":
+				playerId := uint64(msg["playerId"].(float64))
+				roomId := msg["roomId"]
+				if (playerId==p.Id && roomId==g.Id){
+					p.IsPaused = false
+				}
+
+
 			case "start":
 				room := msg["room"]
 				log.Printf("Player %d started the game in room %v (gameId: %s)", p.Id, room, g.Id)
