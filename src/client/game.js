@@ -57,6 +57,7 @@
     direction: { x: 1, y: 0 },
     nextDirection: { x: 1, y: 0 },
     apples: {},
+    walls: [],
     growPending: 0,
     tickMs: 120,
     score: 0,
@@ -193,13 +194,21 @@
 
   function drawApple() {
     for (const [id, apple] of Object.entries(state.apples)) {
-      const view = worldToView(apple.pos)
+      const view = worldToView(apple.pos);
       drawCell(view, apple.color);
+    }
+  }
+
+  function drawWalls() {
+    for (const [id, wall] of Object.entries(state.walls)) {
+      const view = worldToView({ x: wall.x, y: wall.y });
+      drawCell(view, "#ffffff");
     }
   }
 
   function render() {
     clearBoard();
+    drawWalls();
     drawApple();
     drawSnakes();
   }
@@ -273,8 +282,6 @@
     };
   }
 
-  function GetSnake(id) {}
-
   function setupSocket(socket) {
     socket.onopen = () => {
       console.log(`✅ Connected to WebSocket server at /game/${gameId}`);
@@ -312,6 +319,9 @@
       if (data.type === "players_update") {
         const newSnakes = {};
         const newApples = {};
+        const newWalls = {};
+
+        console.log(data.walls);
 
         for (const p of data.players) {
           const body = p.body.map((seg) => ({
@@ -337,7 +347,6 @@
             }
 
             newSnakes[myPlayerId] = mySnake;
-
           } else {
             newSnakes[p.playerId] = {
               body,
@@ -358,8 +367,14 @@
             pos: pos,
           };
         }
+
+        for (const w of data.walls) {
+          const key = `${w.x},${w.y}`;
+          newWalls[key] = { x: Number(w.x), y: Number(w.y) };
+        }
         state.snakes = newSnakes;
         state.apples = newApples;
+        state.walls = newWalls;
         render();
       }
 
@@ -421,9 +436,6 @@
       if (data.type == "game_starting") {
         // set the snake states locally.
         serverTick = data.tickCount;
-        console.log(data.apple);
-        state.apple.x = data.apple.X;
-        state.apple.y = data.apple.Y;
         if (serverTick === 0) {
           for (const p of data.players) {
             const x = p.x;

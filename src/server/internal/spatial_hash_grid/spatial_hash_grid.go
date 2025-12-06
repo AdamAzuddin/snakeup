@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/AdamAzuddin/snakeup/server/internal/player"
+	"github.com/AdamAzuddin/snakeup/server/internal/wall"
 )
 
 func Clamp01(x float64) float64 {
@@ -33,11 +34,13 @@ func (s Set[T]) Delete(v T) {
 type GridCell struct {
 	Players Set[*player.Player]
 	Apples  Set[*player.Apple]
+	Walls   Set[player.Position]
 }
 
 type NearbyObjects struct {
 	Players Set[*player.Player]
 	Apples  Set[*player.Apple]
+	Walls   Set[player.Position]
 }
 
 type SpatialHashGrid struct {
@@ -50,6 +53,7 @@ func NewGridCell() *GridCell {
 	return &GridCell{
 		Players: NewSet[*player.Player](),
 		Apples:  NewSet[*player.Apple](),
+		Walls:   NewSet[player.Position](),
 	}
 }
 
@@ -65,6 +69,29 @@ func (shg *SpatialHashGrid) _GetCellIndex(position player.Position) player.Posit
 
 func _Key(x int, y int) string {
 	return fmt.Sprintf("%d.%d", x, y)
+}
+
+func (shg *SpatialHashGrid) InsertWallChunk(chunk *wall.WallChunk) {
+    for y := 0; y < chunk.Height; y++ {
+        for x := 0; x < chunk.Width; x++ {
+            if chunk.Grid[y][x] {
+                worldX := chunk.Position.X + x
+                worldY := chunk.Position.Y + y
+
+                idx := shg._GetCellIndex(player.Position{X: worldX, Y: worldY})
+                key := _Key(idx.X, idx.Y)
+
+                cell, exists := shg.Cells[key]
+                if !exists {
+                    cell = NewGridCell()
+                    shg.Cells[key] = cell
+                }
+
+                pos := &player.Position{X: worldX, Y: worldY}
+                cell.Walls.Add(*pos)
+            }
+        }
+    }
 }
 
 func (shg *SpatialHashGrid) InsertClient(client *player.Player) {
@@ -96,19 +123,18 @@ func (shg *SpatialHashGrid) InsertClient(client *player.Player) {
 }
 
 func (shg *SpatialHashGrid) InsertApple(apple *player.Apple) {
-    idx := shg._GetCellIndex(apple.Position)
-    key := _Key(idx.X, idx.Y)
+	idx := shg._GetCellIndex(apple.Position)
+	key := _Key(idx.X, idx.Y)
 
-    // Create cell if missing
-    cell, exists := shg.Cells[key]
-    if !exists {
-        cell = NewGridCell()
-        shg.Cells[key] = cell
-    }
+	// Create cell if missing
+	cell, exists := shg.Cells[key]
+	if !exists {
+		cell = NewGridCell()
+		shg.Cells[key] = cell
+	}
 
-    cell.Apples.Add(apple)
+	cell.Apples.Add(apple)
 }
-
 
 func (shg *SpatialHashGrid) NewClient(player *player.Player) {
 
@@ -119,45 +145,81 @@ func (shg *SpatialHashGrid) NewClient(player *player.Player) {
 }
 
 func (shg *SpatialHashGrid) FindNear(client *player.Player) NearbyObjects {
-    result := NearbyObjects{
+	result := NearbyObjects{
 		Players: make(Set[*player.Player]),
-		Apples: make(Set[*player.Apple]),
+		Apples:  make(Set[*player.Apple]),
+		Walls: make(Set[player.Position]),
 	}
 
-    headPos := client.Snake.Body.Front().Value.(player.Position)
-    bounds := client.Bounds
+	headPos := client.Snake.Body.Front().Value.(player.Position)
+	bounds := client.Bounds
 
-    x := headPos.X
-    y := headPos.Y
+	x := headPos.X
+	y := headPos.Y
 
-    w := bounds.X
-    h := bounds.Y
+	w := bounds.X
+	h := bounds.Y
 
-    i1 := shg._GetCellIndex(player.Position{X: x - w/2, Y: y - h/2})
-    i2 := shg._GetCellIndex(player.Position{X: x + w/2, Y: y + h/2})
+	i1 := shg._GetCellIndex(player.Position{X: x - w/2, Y: y - h/2})
+	i2 := shg._GetCellIndex(player.Position{X: x + w/2, Y: y + h/2})
 
-    for cx := i1.X; cx <= i2.X; cx++ {
-        for cy := i1.Y; cy <= i2.Y; cy++ {
+	for cx := i1.X; cx <= i2.X; cx++ {
+		for cy := i1.Y; cy <= i2.Y; cy++ {
 
-            key := _Key(cx, cy)
-            cell, exists := shg.Cells[key]
-            if !exists {
-                continue
-            }
+			key := _Key(cx, cy)
+			cell, exists := shg.Cells[key]
+			if !exists {
+				continue
+			}
 
-            // Add nearby players
-            for p := range cell.Players {
-                result.Players.Add(p)
-            }
+			// Add nearby players
+			for p := range cell.Players {
+				result.Players.Add(p)
+			}
 
-            // Add nearby apples
-            for a := range cell.Apples {
-                result.Apples.Add(a)
-            }
-        }
-    }
+			// Add nearby apples
+			for a := range cell.Apples {
+				result.Apples.Add(a)
+			}
 
-    return result
+			for w := range cell.Walls{
+				result.Walls.Add(w)
+			}
+		}
+	}
+
+	return result
+}
+
+func (shg *SpatialHashGrid) FindNearPosition(pos player.Position) NearbyObjects {
+	result := NearbyObjects{
+		Players: make(Set[*player.Player]),
+		Apples:  make(Set[*player.Apple]),
+		Walls:   make(Set[player.Position]),
+	}
+
+	idx := shg._GetCellIndex(pos)
+	for cx := idx.X - 1; cx <= idx.X+1; cx++ {
+		for cy := idx.Y - 1; cy <= idx.Y+1; cy++ {
+			key := _Key(cx, cy)
+			cell, exists := shg.Cells[key]
+			if !exists {
+				continue
+			}
+
+			for p := range cell.Players {
+				result.Players.Add(p)
+			}
+			for a := range cell.Apples {
+				result.Apples.Add(a)
+			}
+			for w := range cell.Walls {
+				result.Walls.Add(w)
+			}
+		}
+	}
+
+	return result
 }
 
 
@@ -183,8 +245,8 @@ func (shg *SpatialHashGrid) RemoveClient(client *player.Player) {
 		for y := i1.Y; y <= i2.Y; y++ {
 			key := _Key(x, y)
 			if cell, exists := shg.Cells[key]; exists {
-                cell.Players.Delete(client)
-            }
+				cell.Players.Delete(client)
+			}
 		}
 	}
 

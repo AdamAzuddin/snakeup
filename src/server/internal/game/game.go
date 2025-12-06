@@ -8,6 +8,7 @@ import (
 
 	"github.com/AdamAzuddin/snakeup/server/internal/player"
 	"github.com/AdamAzuddin/snakeup/server/internal/spatial_hash_grid"
+	"github.com/AdamAzuddin/snakeup/server/internal/wall"
 )
 
 type GameState int
@@ -22,6 +23,8 @@ type Game struct {
 	Id              string
 	Players         map[uint64]*player.Player
 	Apple           []*player.Apple
+	Walls           []*wall.WallChunk
+	ChunkSize int
 	State           GameState
 	Width           int
 	Height          int
@@ -63,6 +66,50 @@ func (g *Game) Shutdown() {
 
 }
 
+func (g *Game) InitWalls() {
+    chunkSize := g.ChunkSize
+
+    startX := -g.Width
+    startY := -g.Height
+    endX := g.Width
+    endY := g.Height
+
+    chunks := []*wall.WallChunk{}
+    id := uint64(1)
+
+    gridX := 0
+    for x := startX; x+chunkSize <= endX; x += chunkSize {
+        gridY := 0
+        for y := startY; y+chunkSize <= endY; y += chunkSize {
+
+            // ✅ alternating pattern
+            if (gridX+gridY)%2 != 0 {
+                gridY++
+                continue
+            }
+
+            chunk := &wall.WallChunk{
+                Id:       id,
+                Position: player.Position{X: x, Y: y},
+                Width:    chunkSize,
+                Height:   chunkSize,
+            }
+
+            chunk.GenerateMaze()
+            g.WorldGrid.InsertWallChunk(chunk)
+
+            chunks = append(chunks, chunk)
+            id++
+            gridY++
+        }
+        gridX++
+    }
+
+    g.Walls = chunks
+    println("Wall chunks generated:", len(chunks))
+}
+
+
 func (g *Game) GetRandomPosition() player.Position {
 	for {
 		pos := player.Position{
@@ -71,12 +118,12 @@ func (g *Game) GetRandomPosition() player.Position {
 		}
 
 		collision := false
+
 		for _, pl := range g.Players {
 			if pl.Snake == nil || pl.Snake.Body == nil {
 				continue
 			}
 
-			// check all snake segments
 			for e := pl.Snake.Body.Front(); e != nil; e = e.Next() {
 				seg := e.Value.(player.Position)
 				if seg.X == pos.X && seg.Y == pos.Y {
@@ -90,9 +137,23 @@ func (g *Game) GetRandomPosition() player.Position {
 			}
 		}
 
-		if !collision {
-			return pos
+		if collision {
+			continue
 		}
+
+		nearby := g.WorldGrid.FindNearPosition(pos)
+		for wallPos := range nearby.Walls {
+			if wallPos.X == pos.X && wallPos.Y == pos.Y {
+				collision = true
+				break
+			}
+		}
+
+		if collision {
+			continue
+		}
+
+		return pos
 	}
 }
 
@@ -129,8 +190,7 @@ func (g *Game) BroadcastPlayersData(p *player.Player) {
 
 	applesData := []map[string]interface{}{}
 
-	for other := range nearby.Players { // iterate over the Set[*player.Player]
-		// Convert snake body into slice
+	for other := range nearby.Players {
 		var bodyPositions []map[string]int
 		for e := other.Snake.Body.Front(); e != nil; e = e.Next() {
 			pos := e.Value.(player.Position)
@@ -148,11 +208,20 @@ func (g *Game) BroadcastPlayersData(p *player.Player) {
 		})
 	}
 
-	for visibleApples := range nearby.Apples{
+	for visibleApples := range nearby.Apples {
 		applesData = append(applesData, map[string]interface{}{
-			"appleId": visibleApples.Id,
+			"appleId":    visibleApples.Id,
 			"appleColor": visibleApples.Color,
-			"pos": visibleApples.Position,
+			"pos":        visibleApples.Position,
+		})
+	}
+
+	// Include nearby walls
+	wallsData := []map[string]int{}
+	for wallPos := range nearby.Walls {
+		wallsData = append(wallsData, map[string]int{
+			"x": wallPos.X,
+			"y": wallPos.Y,
 		})
 	}
 
@@ -160,11 +229,11 @@ func (g *Game) BroadcastPlayersData(p *player.Player) {
 		"type":    "players_update",
 		"gameId":  g.Id,
 		"players": playersData,
-		"apples":   applesData,
+		"apples":  applesData,
+		"walls":   wallsData, // added walls here
 	}
 
 	data, _ := json.Marshal(msg)
-
 	p.Send <- data
 }
 
@@ -325,6 +394,21 @@ func (g *Game) ContainAppleCollision() (bool, *player.Player, *player.Apple) {
 	}
 	return false, nil, nil
 }
+
+func (g *Game) ContainWallCollision() (bool, *player.Player) {
+	for _, p := range g.Players {
+		head := p.Snake.Body.Front().Value.(player.Position)
+		nearby := g.WorldGrid.FindNear(p)
+
+		for w := range nearby.Walls {
+			if w.X == head.X && w.Y == head.Y {
+				return true, p
+			}
+		}
+	}
+	return false, nil
+}
+
 
 func (g *Game) UpdatePlayersPositions() {
 	for i := range g.Players {

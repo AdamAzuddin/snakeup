@@ -1,8 +1,0 @@
-1. Expand world
-2. Implement spatial partitioning (spatial hashing/grid buckets)
-3. Switch JSON → Protobuf
-4. Build bot client
-5. Stress test server
-6. Fix performance bottlenecks
-7. Implement camera follow
-8. Implement minimap
