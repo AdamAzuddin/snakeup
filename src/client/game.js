@@ -8,8 +8,8 @@
   const canvas = document.getElementById("gameCanvas");
   const ctx = canvas.getContext("2d");
 
-  const WORLD_COLS = 178 / 2;
-  const WORLD_ROWS = 100 / 2;
+  const WORLD_COLS = 50;
+  const WORLD_ROWS = 50;
 
   const SNAKE_COLOR = "#1976d2"; // blue (fallback)
   const APPLE_COLOR = "#d32f2f"; // red
@@ -26,23 +26,21 @@
   function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    console.log("Canvas resized");
 
-    // Use a single scale factor to keep cells square
-    const scale = Math.min(
-      canvas.width / WORLD_COLS,
-      canvas.height / WORLD_ROWS
+    const MIN_CELL_SIZE = 15;
+    const MAX_CELL_SIZE = 30;
+
+    let scale = Math.max(
+      MIN_CELL_SIZE,
+      Math.min(MAX_CELL_SIZE, canvas.width / 80)
     );
 
-    // Save scale for rendering
     scaleX = scale;
     scaleY = scale;
 
-    // Center the game board
-    offsetX = (canvas.width - WORLD_COLS * scale) / 2;
-    offsetY = (canvas.height - WORLD_ROWS * scale) / 2;
+    offsetX = canvas.width / 2;
+    offsetY = canvas.height / 2;
 
-    clearBoard();
     render();
   }
 
@@ -56,14 +54,18 @@
 
   const state = {
     snakes: {},
+    isPaused: false,
     direction: { x: 1, y: 0 },
     nextDirection: { x: 1, y: 0 },
-    apple: { x: null, y: null },
+    apples: {},
+    walls: [],
     growPending: 0,
     tickMs: 120,
     score: 0,
     socket: null,
     myPlayerId: null,
+    myWorldX: 0,
+    myWorldY: 0,
   };
 
   var myPlayerId;
@@ -100,6 +102,26 @@
   };
 
   function handleKeydown(event) {
+    if (event.code === "Space") {
+      let data = {};
+      if (!state.isPaused) {
+        data = {
+          type: "pause",
+          roomId: gameId,
+          playerId: myPlayerId,
+        };
+      } else {
+        data = {
+          type: "resume",
+          roomId: gameId,
+          playerId: myPlayerId,
+        };
+      }
+      if (state.socket) state.socket.send(JSON.stringify(data));
+      state.isPaused = !state.isPaused;
+      return;
+    }
+
     const newDir = keyToDirection[event.key];
     if (!newDir) return;
 
@@ -160,17 +182,14 @@
   }
 
   function drawCell(pos, color, isMySnake = false) {
-    const x = offsetX + pos.x * scaleX;
-    const y = offsetY + pos.y * scaleY;
-    // Draw the main snake bodymy
     ctx.fillStyle = color;
-    ctx.fillRect(x, y, scaleX, scaleY);
+    ctx.fillRect(pos.x, pos.y, scaleX, scaleY);
 
     if (isMySnake) {
       // Draw a black border around your snake
       ctx.lineWidth = 2;
       ctx.strokeStyle = "black";
-      ctx.strokeRect(x, y, scaleX, scaleY);
+      ctx.strokeRect(pos.x, pos.y, scaleX, scaleY);
 
       // Optional: add a shadow glow effect
       ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
@@ -188,19 +207,29 @@
     for (const [id, snake] of Object.entries(state.snakes)) {
       const color = snake.color || SNAKE_COLOR;
       for (const segment of snake.body) {
-        drawCell(segment, color, snake.mySnake);
+        const view = worldToView(segment);
+        drawCell(view, color, snake.mySnake);
       }
     }
   }
 
   function drawApple() {
-    if (state.apple.x != null && state.apple.y != null) {
-      drawCell(state.apple, APPLE_COLOR);
+    for (const [id, apple] of Object.entries(state.apples)) {
+      const view = worldToView(apple.pos);
+      drawCell(view, apple.color);
+    }
+  }
+
+  function drawWalls() {
+    for (const [id, wall] of Object.entries(state.walls)) {
+      const view = worldToView({ x: wall.x, y: wall.y });
+      drawCell(view, "#ffffff");
     }
   }
 
   function render() {
     clearBoard();
+    drawWalls();
     drawApple();
     drawSnakes();
   }
@@ -264,6 +293,16 @@
     })
     .catch((err) => console.error(err));
 
+  function worldToView(pos) {
+    const dx = pos.x - state.myWorldX;
+    const dy = pos.y - state.myWorldY;
+
+    return {
+      x: canvas.width / 2 + dx * scaleX,
+      y: canvas.height / 2 + dy * scaleY,
+    };
+  }
+
   function setupSocket(socket) {
     socket.onopen = () => {
       console.log(`✅ Connected to WebSocket server at /game/${gameId}`);
@@ -276,6 +315,7 @@
 
       if (data.type == "player_init") {
         myPlayerId = data.playerId;
+
         console.log(
           `My id: ${myPlayerId}, Snake color: ${data.snakeColor}, Position: {${data.XPos}, ${data.YPos}}\n`
         );
@@ -285,6 +325,8 @@
         const initX = typeof data.XPos === "number" ? data.XPos : 0;
         const initY = typeof data.YPos === "number" ? data.YPos : 0;
 
+        state.myWorldX = data.XPos;
+        state.myWorldY = data.YPos;
         state.snakes[myPlayerId] = {
           body: [{ x: initX, y: initY }],
           color: data.snakeColor || SNAKE_COLOR,
@@ -296,16 +338,24 @@
       }
 
       if (data.type === "players_update") {
+        const newSnakes = {};
+        const newApples = {};
+        const newWalls = {};
+
+        console.log(data.walls);
+
         for (const p of data.players) {
           const body = p.body.map((seg) => ({
             x: Number(seg.x),
             y: Number(seg.y),
           }));
-          const isMySnake = myPlayerId == p.playerId;
+          const isMySnake = myPlayerId === p.playerId;
 
           if (isMySnake) {
-            const mySnake = state.snakes[myPlayerId];
+            const mySnake = state.snakes[myPlayerId] || {};
             mySnake.body = body;
+            state.myWorldX = mySnake.body[0].x;
+            state.myWorldY = mySnake.body[0].y;
             mySnake.color = p.snakeColor;
             mySnake.mySnake = true;
 
@@ -313,20 +363,39 @@
             pendingInputs = pendingInputs.filter(
               (inp) => inp.seq > lastProcessedInputSeq
             );
-
             for (const inp of pendingInputs) {
               applyInput(mySnake, inp.dir);
             }
-            state.snakes[myPlayerId] = mySnake;
+
+            newSnakes[myPlayerId] = mySnake;
           } else {
-            state.snakes[p.playerId] = {
-              body: body,
+            newSnakes[p.playerId] = {
+              body,
               color: p.snakeColor,
               mySnake: false,
             };
           }
         }
+        for (const a of data.apples) {
+          const pos = {
+            x: Number(a.pos.X),
+            y: Number(a.pos.Y),
+          };
 
+          newApples[a.appleId] = {
+            id: a.appleId,
+            color: a.appleColor,
+            pos: pos,
+          };
+        }
+
+        for (const w of data.walls) {
+          const key = `${w.x},${w.y}`;
+          newWalls[key] = { x: Number(w.x), y: Number(w.y) };
+        }
+        state.snakes = newSnakes;
+        state.apples = newApples;
+        state.walls = newWalls;
         render();
       }
 
@@ -388,9 +457,6 @@
       if (data.type == "game_starting") {
         // set the snake states locally.
         serverTick = data.tickCount;
-        console.log(data.apple);
-        state.apple.x = data.apple.X;
-        state.apple.y = data.apple.Y;
         if (serverTick === 0) {
           for (const p of data.players) {
             const x = p.x;
