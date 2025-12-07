@@ -66,6 +66,26 @@ func (g *Game) Shutdown() {
 
 }
 
+func NewGame(id string, worldMax int, shg spatial_hash_grid.SpatialHashGrid, maxPlayer int, chunkSize int) *Game {
+	return &Game{
+		Id:              id,
+		State:           Init,
+		Players:         make(map[uint64]*player.Player, maxPlayer),
+		Width:           worldMax,
+		Height:          worldMax,
+		WorldGrid:       shg,
+		ChunkSize:       chunkSize,
+		Updates:         make(chan GameState, 100),
+		Input:           make(chan player.PlayerInput, 100),
+		StopBroadcast:   make(chan bool),
+		Broadcast:       make(chan []byte, 100),
+		Quit:            make(chan struct{}),
+		IdCounter:       0,
+		SnakeColorCount: 0,
+		ColorList:       player.GenerateColors(maxPlayer),
+	}
+}
+
 func (g *Game) InitWalls() {
 	chunkSize := g.ChunkSize
 
@@ -82,7 +102,6 @@ func (g *Game) InitWalls() {
 		gridY := 0
 		for y := startY; y+chunkSize <= endY; y += chunkSize {
 
-			// ✅ alternating pattern
 			if (gridX+gridY)%2 != 0 {
 				gridY++
 				continue
@@ -106,7 +125,6 @@ func (g *Game) InitWalls() {
 	}
 
 	g.Walls = chunks
-	println("Wall chunks generated:", len(chunks))
 }
 
 func (g *Game) GetRandomPosition() player.Position {

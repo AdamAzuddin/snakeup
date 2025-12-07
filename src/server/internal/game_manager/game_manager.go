@@ -34,38 +34,22 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 	log.Printf("CreateNewGame called for id %s", gameId)
 
 	shg := spatial_hash_grid.SpatialHashGrid{
-		Bounds:     make([]player.Position, 0),
+		Bounds: []player.Position{
+			{X: -WORLD_MAX, Y: -WORLD_MAX},
+			{X: WORLD_MAX, Y: WORLD_MAX},
+		},
 		Dimensions: player.Position{X: 50, Y: 50},
 		Cells:      make(map[string]*spatial_hash_grid.GridCell),
 	}
-
-	shg.Bounds = append(shg.Bounds, player.Position{X: -WORLD_MAX, Y: -WORLD_MAX})
-	shg.Bounds = append(shg.Bounds, player.Position{X: WORLD_MAX, Y: WORLD_MAX})
-	// spawn a new go routine
-	newGame := game.Game{
-		Id:              gameId,
-		State:           game.Init,
-		Players:         make(map[uint64]*player.Player, MAX_NO_PLAYERS_IN_A_ROOM),
-		Width:           WORLD_MAX,
-		Height:          WORLD_MAX,
-		WorldGrid:       shg,
-		ChunkSize: 73,
-		Updates:         make(chan game.GameState, 100),
-		Input:           make(chan player.PlayerInput, 100),
-		StopBroadcast:   make(chan bool),
-		Broadcast:       make(chan []byte, 100),
-		Quit:            make(chan struct{}),
-		IdCounter:       0,
-		SnakeColorCount: 0,
-		ColorList:       player.GenerateColors(MAX_NO_PLAYERS_IN_A_ROOM),
-	}
+	
+	newGame := game.NewGame(gameId, WORLD_MAX, shg, MAX_NO_PLAYERS_IN_A_ROOM, 73)
 	gm.mu.Lock()
-	gm.Games[gameId] = &newGame
+	gm.Games[gameId] = newGame
 	newGame.InitWalls()
 	gm.mu.Unlock()
 
-	go gm.runBroadcaster(&newGame)
-	return &newGame
+	go gm.runBroadcaster(newGame)
+	return newGame
 }
 
 func (gm *GameManager) RunGame(g *game.Game) {
@@ -171,7 +155,7 @@ func (gm *GameManager) RunGame(g *game.Game) {
 				g.Broadcast <- data
 			}
 
-			if hasWallCollision, pl := g.ContainWallCollision(); hasWallCollision && pl!=nil{
+			if hasWallCollision, pl := g.ContainWallCollision(); hasWallCollision && pl != nil {
 				g.RemovePlayer(pl)
 			}
 
@@ -447,17 +431,16 @@ func (gm *GameManager) handlePlayerConnection(p *player.Player, g *game.Game) {
 			case "pause":
 				playerId := uint64(msg["playerId"].(float64))
 				roomId := msg["roomId"]
-				if (playerId==p.Id && roomId==g.Id){
+				if playerId == p.Id && roomId == g.Id {
 					p.IsPaused = true
 				}
 
 			case "resume":
 				playerId := uint64(msg["playerId"].(float64))
 				roomId := msg["roomId"]
-				if (playerId==p.Id && roomId==g.Id){
+				if playerId == p.Id && roomId == g.Id {
 					p.IsPaused = false
 				}
-
 
 			case "start":
 				room := msg["room"]
