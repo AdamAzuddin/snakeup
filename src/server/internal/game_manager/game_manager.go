@@ -41,7 +41,7 @@ func (gm *GameManager) CreateNewGame(gameId string) *game.Game {
 		Dimensions: player.Position{X: 50, Y: 50},
 		Cells:      make(map[string]*spatial_hash_grid.GridCell),
 	}
-	
+
 	newGame := game.NewGame(gameId, WORLD_MAX, shg, MAX_NO_PLAYERS_IN_A_ROOM, 73)
 	gm.mu.Lock()
 	gm.Games[gameId] = newGame
@@ -157,6 +157,18 @@ func (gm *GameManager) RunGame(g *game.Game) {
 
 			if hasWallCollision, pl := g.ContainWallCollision(); hasWallCollision && pl != nil {
 				g.RemovePlayer(pl)
+				if len(g.Players) == 1 {
+					// broadcast game over
+					g.State = game.End
+					tickMsg := map[string]interface{}{
+						"type":   "game_over",
+						"gameId": g.Id,
+					}
+					data, _ := json.Marshal(tickMsg)
+					g.Broadcast <- data
+					g.Updates <- game.End
+					fmt.Print("Game ended")
+				}
 			}
 
 		case state, ok := <-g.Updates:
