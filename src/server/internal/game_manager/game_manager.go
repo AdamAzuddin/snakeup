@@ -15,8 +15,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const MAX_NO_PLAYERS_IN_A_ROOM = 100
-const WORLD_MAX = 1000
+const MAX_NO_PLAYERS_IN_A_ROOM = 20
+const WORLD_MAX = 200
 const APPLE_COUNT = 20
 
 type GameManager struct {
