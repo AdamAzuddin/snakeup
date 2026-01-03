@@ -287,7 +287,12 @@
         window.location.href = "index.html";
         return Promise.reject("Game not valid");
       }
-      const socket = new WebSocket(`ws://snakeup.onrender.com/game/${gameId}`);
+      
+      const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+      const serverUrl = 'snakeup.onrender.com';
+      const gameId = '1';
+
+      const socket = new WebSocket(`${protocol}${serverUrl}/game/${gameId}`);
       state.socket = socket;
       setupSocket(socket);
     })
