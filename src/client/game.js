@@ -281,13 +281,13 @@
     return;
   }
 
-  fetch(`http://localhost:42069/check-game/${gameId}`)
+  fetch(`https://snakeup.onrender.com/check-game/${gameId}`)
     .then((res) => {
       if (!res.ok) {
         window.location.href = "index.html";
         return Promise.reject("Game not valid");
       }
-      const socket = new WebSocket(`ws://localhost:42069/game/${gameId}`);
+      const socket = new WebSocket(`ws://snakeup.onrender.com/game/${gameId}`);
       state.socket = socket;
       setupSocket(socket);
     })
