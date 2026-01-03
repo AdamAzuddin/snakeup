@@ -290,7 +290,6 @@
       
       const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
       const serverUrl = 'snakeup.onrender.com';
-      const gameId = '1';
 
       const socket = new WebSocket(`${protocol}${serverUrl}/game/${gameId}`);
       state.socket = socket;
