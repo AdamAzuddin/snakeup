@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             // 🔥 Make HTTP request to your backend join endpoint
-            const response = await fetch(`http://localhost:42069/api/join/${encodeURIComponent(gameId)}`, {
+            const response = await fetch(`https://snakeup.onrender.com/api/join/${encodeURIComponent(gameId)}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
