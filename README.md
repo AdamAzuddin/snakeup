@@ -7,9 +7,9 @@ The project demonstrates **systems engineering** concepts: networking protocols,
 
 ## 🚀 Features
 
-- Real-time multiplayer (up to 8 players).
-- Account system + private room creation with invite links.
-- Procedurally generated maps (planned).
+- Real-time multiplayer (up to 20 players per room).
+- Account system + private room creation with invite links. (planned)
+- Procedurally generated maps.
 - Powerups for dynamic gameplay (planned).
 - Dockerized backend + CI/CD pipeline (planned).
 
@@ -19,9 +19,8 @@ The project demonstrates **systems engineering** concepts: networking protocols,
 
 - **Backend**: Go + WebSockets (`gorilla/websocket` or stdlib)
 - **Frontend**: HTML5 Canvas + JavaScript + CSS
-- **Database**: PostgreSQL
-- **Infra**: Docker, GitHub Actions (CI/CD)
-- **Deployment**: Render / Fly.io / VPS
+- **Infra**: GitHub Actions (CI/CD)
+- **Deployment**: Render
 
 ---
 
@@ -31,7 +30,6 @@ The project demonstrates **systems engineering** concepts: networking protocols,
 .
 ├── client/       # Frontend (HTML, JS, CSS)
 ├── server/       # Go backend (WebSocket server, DB)
-├── infra/        # Docker, CI/CD configs
 ├── docs/         # Protocol docs, RFC-style notes
 └── README.md
 ```
@@ -46,8 +44,6 @@ Make sure you have installed:
 
 - [Go](https://go.dev/dl/) (>=1.20)
 - [Node.js](https://nodejs.org/) (for frontend dev, >=18 recommended)
-- [PostgreSQL](https://www.postgresql.org/)
-- [Docker](https://docs.docker.com/get-docker/) (optional, for containerized runs)
 
 ---
 
@@ -95,26 +91,7 @@ protoc --go_out=./src/server --go_opt=paths=source_relative \
 ```
 
 ---
-
-### 4. Database Setup (PostgreSQL)
-
-1. Create a new database:
-
-   ```bash
-   createdb snakeup
-   ```
-
-2. Run the migrations (example using `psql`):
-
-   ```bash
-   psql snakeup < infra/migrations/init.sql
-   ```
-
-3. Update DB connection string in `server/config.yaml` or environment variables.
-
----
-
-### 5. Frontend Setup
+### 4. Frontend Setup
 
 1. Navigate to the client folder:
 
@@ -139,24 +116,6 @@ protoc --go_out=./src/server --go_opt=paths=source_relative \
 ```bash
 npx pbjs proto/snake.proto --es5 src/client/snake_pb.js
 ```
-
----
-
-### 6. Run with Docker (Optional)
-
-To run the full stack in Docker:
-
-```bash
-docker-compose up --build
-```
-
-This will spin up:
-
-- Backend (Go server)
-- PostgreSQL database
-- Frontend (served as static files)
-
----
 
 ## 🧪 Development Workflow
 
